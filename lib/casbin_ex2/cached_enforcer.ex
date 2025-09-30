@@ -176,8 +176,10 @@ defmodule CasbinEx2.CachedEnforcer do
              :load_policy
            ] do
     # Delegate to enforcer server and invalidate cache
-    result = delegate_to_enforcer_server(call, from, state.enforcer)
-    new_state = %{state | cache: %{}}
+    {result, updated_enforcer} =
+      delegate_to_enforcer_server_with_state(call, from, state.enforcer)
+
+    new_state = %{state | cache: %{}, enforcer: updated_enforcer}
     {:reply, result, new_state}
   end
 
@@ -248,8 +250,7 @@ defmodule CasbinEx2.CachedEnforcer do
   # This is a simplified delegation - in practice, you might want to
   # implement a more sophisticated approach
   defp delegate_to_enforcer_server(call, _from, enforcer) do
-    # For now, we'll handle these calls directly against the enforcer struct
-    # In a full implementation, you might want to delegate to an actual enforcer server
+    # Handle calls directly against the enforcer struct (read-only operations)
     case call do
       {:get_policy} ->
         Map.get(enforcer.policies, "p", [])
@@ -263,6 +264,49 @@ defmodule CasbinEx2.CachedEnforcer do
 
       _ ->
         {:error, :not_implemented}
+    end
+  end
+
+  # Handle policy modification calls that return updated enforcer state
+  defp delegate_to_enforcer_server_with_state(call, _from, enforcer) do
+    case call do
+      {:add_policy, params} ->
+        handle_policy_operation(enforcer, :add_named_policy, "p", params)
+
+      {:remove_policy, params} ->
+        handle_policy_operation(enforcer, :remove_named_policy, "p", params)
+
+      {:add_grouping_policy, params} ->
+        handle_policy_operation(enforcer, :add_named_grouping_policy, "g", params)
+
+      {:remove_grouping_policy, params} ->
+        handle_policy_operation(enforcer, :remove_named_grouping_policy, "g", params)
+
+      {:load_policy} ->
+        handle_load_policy_operation(enforcer)
+
+      _ ->
+        {{:error, :not_implemented}, enforcer}
+    end
+  end
+
+  defp handle_policy_operation(enforcer, operation, policy_type, params) do
+    case apply(Enforcer, operation, [enforcer, policy_type, params]) do
+      {:ok, updated_enforcer} ->
+        {true, updated_enforcer}
+
+      {:error, _reason} ->
+        {false, enforcer}
+    end
+  end
+
+  defp handle_load_policy_operation(enforcer) do
+    case Enforcer.load_policy(enforcer) do
+      {:ok, updated_enforcer} ->
+        {:ok, updated_enforcer}
+
+      {:error, reason} ->
+        {{:error, reason}, enforcer}
     end
   end
 end
