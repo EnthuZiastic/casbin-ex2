@@ -565,38 +565,65 @@ defmodule CasbinEx2.Enforcer do
         old_policies,
         new_policies
       ) do
-    if length(old_policies) != length(new_policies) do
-      {:error, :length_mismatch}
-    else
-      current_rules = Map.get(policies, ptype, [])
-
-      # Check all old policies exist
-      missing_policies = Enum.reject(old_policies, &(&1 in current_rules))
-
-      if missing_policies != [] do
-        {:error, {:not_found, missing_policies}}
-      else
-        # Remove old policies and add new ones
-        updated_rules =
-          Enum.reduce(old_policies, current_rules, fn old_policy, acc ->
-            List.delete(acc, old_policy)
-          end)
-
-        final_rules =
-          Enum.reduce(new_policies, updated_rules, fn new_policy, acc ->
-            [new_policy | acc]
-          end)
-
-        new_policies_map = Map.put(policies, ptype, final_rules)
-        updated_enforcer = %{enforcer | policies: new_policies_map}
-
-        if enforcer.auto_save do
-          save_policy(updated_enforcer)
-        else
-          {:ok, updated_enforcer}
-        end
-      end
+    case validate_policy_lengths(old_policies, new_policies) do
+      :ok -> perform_policy_update(enforcer, policies, ptype, old_policies, new_policies)
+      error -> error
     end
+  end
+
+  defp validate_policy_lengths(old_policies, new_policies) do
+    if length(old_policies) == length(new_policies) do
+      :ok
+    else
+      {:error, :length_mismatch}
+    end
+  end
+
+  defp perform_policy_update(enforcer, policies, ptype, old_policies, new_policies) do
+    current_rules = Map.get(policies, ptype, [])
+
+    case validate_existing_policies(old_policies, current_rules) do
+      :ok ->
+        execute_policy_update(
+          enforcer,
+          policies,
+          ptype,
+          current_rules,
+          old_policies,
+          new_policies
+        )
+
+      error ->
+        error
+    end
+  end
+
+  defp validate_existing_policies(old_policies, current_rules) do
+    missing_policies = Enum.reject(old_policies, &(&1 in current_rules))
+
+    if missing_policies == [] do
+      :ok
+    else
+      {:error, {:not_found, missing_policies}}
+    end
+  end
+
+  defp execute_policy_update(enforcer, policies, ptype, current_rules, old_policies, new_policies) do
+    updated_rules = remove_old_policies(old_policies, current_rules)
+    final_rules = add_new_policies(new_policies, updated_rules)
+    updated_enforcer = %{enforcer | policies: Map.put(policies, ptype, final_rules)}
+
+    if enforcer.auto_save do
+      save_policy(updated_enforcer)
+    else
+      {:ok, updated_enforcer}
+    end
+  end
+
+  defp remove_old_policies(old_policies, current_rules) do
+    Enum.reduce(old_policies, current_rules, fn old_policy, acc ->
+      List.delete(acc, old_policy)
+    end)
   end
 
   @doc """
@@ -621,37 +648,42 @@ defmodule CasbinEx2.Enforcer do
         field_values
       ) do
     current_rules = Map.get(policies, ptype, [])
+    filtered_rules = filter_matching_policies(current_rules, field_index, field_values)
+    final_rules = add_new_policies(new_policies, filtered_rules)
 
-    # Remove policies that match the filter
-    filtered_rules =
-      Enum.reject(current_rules, fn rule ->
-        field_values
-        |> Enum.with_index()
-        |> Enum.all?(fn {value, offset} ->
-          if value == "" do
-            true
-          else
-            rule_index = field_index + offset
-            rule_value = Enum.at(rule, rule_index)
-            rule_value == value
-          end
-        end)
-      end)
-
-    # Add new policies
-    final_rules =
-      Enum.reduce(new_policies, filtered_rules, fn new_policy, acc ->
-        [new_policy | acc]
-      end)
-
-    new_policies_map = Map.put(policies, ptype, final_rules)
-    updated_enforcer = %{enforcer | policies: new_policies_map}
+    updated_enforcer = %{enforcer | policies: Map.put(policies, ptype, final_rules)}
 
     if enforcer.auto_save do
       save_policy(updated_enforcer)
     else
       {:ok, updated_enforcer}
     end
+  end
+
+  defp filter_matching_policies(current_rules, field_index, field_values) do
+    Enum.reject(current_rules, fn rule ->
+      matches_filter_criteria?(rule, field_index, field_values)
+    end)
+  end
+
+  defp matches_filter_criteria?(rule, field_index, field_values) do
+    field_values
+    |> Enum.with_index()
+    |> Enum.all?(fn {value, offset} ->
+      field_matches?(rule, field_index + offset, value)
+    end)
+  end
+
+  defp field_matches?(_rule, _rule_index, ""), do: true
+
+  defp field_matches?(rule, rule_index, value) do
+    Enum.at(rule, rule_index) == value
+  end
+
+  defp add_new_policies(new_policies, filtered_rules) do
+    Enum.reduce(new_policies, filtered_rules, fn new_policy, acc ->
+      [new_policy | acc]
+    end)
   end
 
   @doc """
@@ -1129,24 +1161,38 @@ defmodule CasbinEx2.Enforcer do
   end
 
   defp evaluate_policy_with_explanation(enforcer, policy, request, _matcher_expr) do
-    # Enhanced policy evaluation with role checking and explanations
-    case {policy, request} do
-      {[sub, obj, act], [req_sub, req_obj, req_act]} ->
-        # Direct policy match
-        if sub == req_sub and obj == req_obj and act == req_act do
-          {true, "Direct policy match: #{inspect(policy)}"}
-        else
-          # Check role inheritance: user has role AND object and action match
-          if obj == req_obj and act == req_act and check_role_inheritance(enforcer, req_sub, sub) do
-            {true,
-             "Role inheritance match: #{req_sub} has role #{sub} for policy #{inspect(policy)}"}
-          else
-            {false, "No match for policy #{inspect(policy)}"}
-          end
-        end
+    case validate_policy_format(policy, request) do
+      {:ok, {sub, obj, act, req_sub, req_obj, req_act}} ->
+        evaluate_policy_match(enforcer, policy, sub, obj, act, req_sub, req_obj, req_act)
 
-      _ ->
+      :error ->
         {false, "Policy format mismatch: #{inspect(policy)}"}
+    end
+  end
+
+  defp validate_policy_format([sub, obj, act], [req_sub, req_obj, req_act]) do
+    {:ok, {sub, obj, act, req_sub, req_obj, req_act}}
+  end
+
+  defp validate_policy_format(_, _), do: :error
+
+  defp evaluate_policy_match(enforcer, policy, sub, obj, act, req_sub, req_obj, req_act) do
+    if has_direct_match?(sub, obj, act, req_sub, req_obj, req_act) do
+      {true, "Direct policy match: #{inspect(policy)}"}
+    else
+      evaluate_role_inheritance_match(enforcer, policy, sub, obj, act, req_sub, req_obj, req_act)
+    end
+  end
+
+  defp has_direct_match?(sub, obj, act, req_sub, req_obj, req_act) do
+    sub == req_sub and obj == req_obj and act == req_act
+  end
+
+  defp evaluate_role_inheritance_match(enforcer, policy, sub, obj, act, req_sub, req_obj, req_act) do
+    if obj == req_obj and act == req_act and check_role_inheritance(enforcer, req_sub, sub) do
+      {true, "Role inheritance match: #{req_sub} has role #{sub} for policy #{inspect(policy)}"}
+    else
+      {false, "No match for policy #{inspect(policy)}"}
     end
   end
 

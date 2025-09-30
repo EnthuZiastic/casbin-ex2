@@ -235,133 +235,224 @@ defmodule CasbinEx2.SyncedEnforcer do
   end
 
   defp handle_read_operation(call, _from, state) do
-    case call do
-      {:enforce, request} ->
-        result = Enforcer.enforce(state.enforcer, request)
-        {:reply, result, state}
-
-      {:batch_enforce, requests} ->
-        results = Enum.map(requests, &Enforcer.enforce(state.enforcer, &1))
-        {:reply, results, state}
-
-      {:get_policy} ->
-        policies = Map.get(state.enforcer.policies, "p", [])
-        {:reply, policies, state}
-
-      {:get_filtered_policy, field_index, field_values} ->
-        policies = get_filtered_policy_impl(state.enforcer, "p", field_index, field_values)
-        {:reply, policies, state}
-
-      {:has_policy, params} ->
-        result = has_policy_impl(state.enforcer, "p", params)
-        {:reply, result, state}
-
-      {:get_grouping_policy} ->
-        policies = Map.get(state.enforcer.grouping_policies, "g", [])
-        {:reply, policies, state}
-
-      {:get_roles_for_user, user, domain} ->
-        roles = CasbinEx2.RoleManager.get_roles(state.enforcer.role_manager, user, domain)
-        {:reply, roles, state}
-
-      {:get_users_for_role, role, domain} ->
-        users = CasbinEx2.RoleManager.get_users(state.enforcer.role_manager, role, domain)
-        {:reply, users, state}
-
-      {:has_role_for_user, user, role, domain} ->
-        result = CasbinEx2.RoleManager.has_link(state.enforcer.role_manager, user, role, domain)
-        {:reply, result, state}
-
-      {:get_permissions_for_user, user, domain} ->
-        permissions = get_permissions_for_user_impl(state.enforcer, user, domain)
-        {:reply, permissions, state}
-
-      _ ->
-        {:reply, {:error, :unknown_read_operation}, state}
+    case categorize_read_operation(call) do
+      {:enforce_type, operation_data} -> handle_enforce_type_operation(state, operation_data)
+      {:policy_type, operation_data} -> handle_policy_type_operation(state, operation_data)
+      {:role_type, operation_data} -> handle_role_type_operation(state, operation_data)
+      :unknown -> {:reply, {:error, :unknown_read_operation}, state}
     end
   end
+
+  defp categorize_read_operation(call) do
+    case call do
+      {:enforce, request} ->
+        {:enforce_type, {:enforce, request}}
+
+      {:batch_enforce, requests} ->
+        {:enforce_type, {:batch_enforce, requests}}
+
+      {:get_policy} ->
+        {:policy_type, {:get_policy}}
+
+      {:get_filtered_policy, field_index, field_values} ->
+        {:policy_type, {:get_filtered_policy, field_index, field_values}}
+
+      {:has_policy, params} ->
+        {:policy_type, {:has_policy, params}}
+
+      {:get_grouping_policy} ->
+        {:policy_type, {:get_grouping_policy}}
+
+      {:get_roles_for_user, user, domain} ->
+        {:role_type, {:get_roles_for_user, user, domain}}
+
+      {:get_users_for_role, role, domain} ->
+        {:role_type, {:get_users_for_role, role, domain}}
+
+      {:has_role_for_user, user, role, domain} ->
+        {:role_type, {:has_role_for_user, user, role, domain}}
+
+      {:get_permissions_for_user, user, domain} ->
+        {:role_type, {:get_permissions_for_user, user, domain}}
+
+      _ ->
+        :unknown
+    end
+  end
+
+  defp handle_enforce_type_operation(state, operation_data) do
+    case operation_data do
+      {:enforce, request} -> handle_enforce_operation(state, request)
+      {:batch_enforce, requests} -> handle_batch_enforce_operation(state, requests)
+    end
+  end
+
+  defp handle_policy_type_operation(state, operation_data) do
+    case operation_data do
+      {:get_policy} ->
+        handle_simple_read_operation(state, &get_policy_data/1)
+
+      {:get_filtered_policy, field_index, field_values} ->
+        handle_filtered_read_operation(state, field_index, field_values)
+
+      {:has_policy, params} ->
+        handle_policy_check_operation(state, params)
+
+      {:get_grouping_policy} ->
+        handle_simple_read_operation(state, &get_grouping_policy_data/1)
+    end
+  end
+
+  defp handle_role_type_operation(state, operation_data) do
+    case operation_data do
+      {:get_roles_for_user, user, domain} ->
+        handle_role_operation(state, :get_roles, user, domain)
+
+      {:get_users_for_role, role, domain} ->
+        handle_role_operation(state, :get_users, role, domain)
+
+      {:has_role_for_user, user, role, domain} ->
+        handle_role_check_operation(state, user, role, domain)
+
+      {:get_permissions_for_user, user, domain} ->
+        handle_permissions_operation(state, user, domain)
+    end
+  end
+
+  defp handle_enforce_operation(state, request) do
+    result = Enforcer.enforce(state.enforcer, request)
+    {:reply, result, state}
+  end
+
+  defp handle_batch_enforce_operation(state, requests) do
+    results = Enum.map(requests, &Enforcer.enforce(state.enforcer, &1))
+    {:reply, results, state}
+  end
+
+  defp handle_simple_read_operation(state, data_func) do
+    data = data_func.(state.enforcer)
+    {:reply, data, state}
+  end
+
+  defp handle_filtered_read_operation(state, field_index, field_values) do
+    policies = get_filtered_policy_impl(state.enforcer, "p", field_index, field_values)
+    {:reply, policies, state}
+  end
+
+  defp handle_policy_check_operation(state, params) do
+    result = has_policy_impl(state.enforcer, "p", params)
+    {:reply, result, state}
+  end
+
+  defp handle_role_operation(state, operation, user_or_role, domain) do
+    result =
+      case operation do
+        :get_roles ->
+          CasbinEx2.RoleManager.get_roles(state.enforcer.role_manager, user_or_role, domain)
+
+        :get_users ->
+          CasbinEx2.RoleManager.get_users(state.enforcer.role_manager, user_or_role, domain)
+      end
+
+    {:reply, result, state}
+  end
+
+  defp handle_role_check_operation(state, user, role, domain) do
+    result = CasbinEx2.RoleManager.has_link(state.enforcer.role_manager, user, role, domain)
+    {:reply, result, state}
+  end
+
+  defp handle_permissions_operation(state, user, domain) do
+    permissions = get_permissions_for_user_impl(state.enforcer, user, domain)
+    {:reply, permissions, state}
+  end
+
+  defp get_policy_data(enforcer), do: Map.get(enforcer.policies, "p", [])
+  defp get_grouping_policy_data(enforcer), do: Map.get(enforcer.grouping_policies, "g", [])
 
   defp handle_write_operation(call, _from, state) do
     case call do
       {:add_policy, params} ->
-        case add_policy_impl(state.enforcer, "p", "p", params) do
-          {:ok, new_enforcer} ->
-            new_state = %{state | enforcer: new_enforcer}
-            update_ets(new_state)
-            {:reply, true, new_state}
-
-          {:error, _reason} ->
-            {:reply, false, state}
-        end
+        handle_policy_operation(state, :add_policy, params)
 
       {:add_policies, rules} ->
-        {:ok, new_enforcer} = add_policies_impl(state.enforcer, "p", "p", rules)
+        handle_policy_batch_operation(state, :add_policies, rules)
+
+      {:remove_policy, params} ->
+        handle_policy_operation(state, :remove_policy, params)
+
+      {:add_grouping_policy, params} ->
+        handle_grouping_policy_operation(state, :add_grouping_policy, params)
+
+      {:remove_grouping_policy, params} ->
+        handle_grouping_policy_operation(state, :remove_grouping_policy, params)
+
+      {:load_policy} ->
+        handle_enforcer_operation(state, &Enforcer.load_policy/1, :ok)
+
+      {:save_policy} ->
+        handle_enforcer_operation(state, &Enforcer.save_policy/1, :ok, false)
+
+      {:build_role_links} ->
+        handle_enforcer_operation(state, &Enforcer.build_role_links/1, :ok)
+
+      _ ->
+        {:reply, {:error, :unknown_write_operation}, state}
+    end
+  end
+
+  defp handle_policy_operation(state, operation, params) do
+    operation_func =
+      case operation do
+        :add_policy -> &add_policy_impl/4
+        :remove_policy -> &remove_policy_impl/4
+      end
+
+    case operation_func.(state.enforcer, "p", "p", params) do
+      {:ok, new_enforcer} ->
         new_state = %{state | enforcer: new_enforcer}
         update_ets(new_state)
         {:reply, true, new_state}
 
-      {:remove_policy, params} ->
-        case remove_policy_impl(state.enforcer, "p", "p", params) do
-          {:ok, new_enforcer} ->
-            new_state = %{state | enforcer: new_enforcer}
-            update_ets(new_state)
-            {:reply, true, new_state}
+      {:error, _reason} ->
+        {:reply, false, state}
+    end
+  end
 
-          {:error, _reason} ->
-            {:reply, false, state}
-        end
+  defp handle_policy_batch_operation(state, :add_policies, rules) do
+    {:ok, new_enforcer} = add_policies_impl(state.enforcer, "p", "p", rules)
+    new_state = %{state | enforcer: new_enforcer}
+    update_ets(new_state)
+    {:reply, true, new_state}
+  end
 
-      {:add_grouping_policy, params} ->
-        case add_grouping_policy_impl(state.enforcer, "g", "g", params) do
-          {:ok, new_enforcer} ->
-            new_state = %{state | enforcer: new_enforcer}
-            update_ets(new_state)
-            {:reply, true, new_state}
+  defp handle_grouping_policy_operation(state, operation, params) do
+    operation_func =
+      case operation do
+        :add_grouping_policy -> &add_grouping_policy_impl/4
+        :remove_grouping_policy -> &remove_grouping_policy_impl/4
+      end
 
-          {:error, _reason} ->
-            {:reply, false, state}
-        end
-
-      {:remove_grouping_policy, params} ->
-        case remove_grouping_policy_impl(state.enforcer, "g", "g", params) do
-          {:ok, new_enforcer} ->
-            new_state = %{state | enforcer: new_enforcer}
-            update_ets(new_state)
-            {:reply, true, new_state}
-
-          {:error, _reason} ->
-            {:reply, false, state}
-        end
-
-      {:load_policy} ->
-        case Enforcer.load_policy(state.enforcer) do
-          {:ok, new_enforcer} ->
-            new_state = %{state | enforcer: new_enforcer}
-            update_ets(new_state)
-            {:reply, :ok, new_state}
-
-          {:error, reason} ->
-            {:reply, {:error, reason}, state}
-        end
-
-      {:save_policy} ->
-        case Enforcer.save_policy(state.enforcer) do
-          {:ok, new_enforcer} ->
-            new_state = %{state | enforcer: new_enforcer}
-            {:reply, :ok, new_state}
-
-          {:error, reason} ->
-            {:reply, {:error, reason}, state}
-        end
-
-      {:build_role_links} ->
-        {:ok, new_enforcer} = Enforcer.build_role_links(state.enforcer)
+    case operation_func.(state.enforcer, "g", "g", params) do
+      {:ok, new_enforcer} ->
         new_state = %{state | enforcer: new_enforcer}
         update_ets(new_state)
-        {:reply, :ok, new_state}
+        {:reply, true, new_state}
 
-      _ ->
-        {:reply, {:error, :unknown_write_operation}, state}
+      {:error, _reason} ->
+        {:reply, false, state}
+    end
+  end
+
+  defp handle_enforcer_operation(state, operation_func, success_value, update_ets? \\ true) do
+    case operation_func.(state.enforcer) do
+      {:ok, new_enforcer} ->
+        new_state = %{state | enforcer: new_enforcer}
+        if update_ets?, do: update_ets(new_state)
+        {:reply, success_value, new_state}
+
+      {:error, reason} ->
+        {:reply, {:error, reason}, state}
     end
   end
 
@@ -494,18 +585,22 @@ defmodule CasbinEx2.SyncedEnforcer do
     current_rules = Map.get(enforcer.policies, ptype, [])
 
     Enum.filter(current_rules, fn rule ->
-      field_values
-      |> Enum.with_index()
-      |> Enum.all?(fn {value, offset} ->
-        if value == "" do
-          true
-        else
-          rule_index = field_index + offset
-          rule_value = Enum.at(rule, rule_index)
-          rule_value == value
-        end
-      end)
+      matches_filter_values?(rule, field_index, field_values)
     end)
+  end
+
+  defp matches_filter_values?(rule, field_index, field_values) do
+    field_values
+    |> Enum.with_index()
+    |> Enum.all?(fn {value, offset} ->
+      matches_field_value?(rule, field_index + offset, value)
+    end)
+  end
+
+  defp matches_field_value?(_rule, _rule_index, ""), do: true
+
+  defp matches_field_value?(rule, rule_index, value) do
+    Enum.at(rule, rule_index) == value
   end
 
   defp has_policy_impl(enforcer, ptype, params) do
@@ -514,32 +609,39 @@ defmodule CasbinEx2.SyncedEnforcer do
   end
 
   defp get_permissions_for_user_impl(enforcer, user, domain) do
-    # Get direct permissions for user
     current_rules = Map.get(enforcer.policies, "p", [])
-
-    direct_permissions =
-      Enum.filter(current_rules, fn rule ->
-        case rule do
-          [^user | _] when domain == "" -> true
-          [^user, _, _, ^domain] -> true
-          _ -> false
-        end
-      end)
-
-    # Get permissions through roles
-    roles = CasbinEx2.RoleManager.get_roles(enforcer.role_manager, user, domain)
-
-    role_permissions =
-      Enum.flat_map(roles, fn role ->
-        Enum.filter(current_rules, fn rule ->
-          case rule do
-            [^role | _] when domain == "" -> true
-            [^role, _, _, ^domain] -> true
-            _ -> false
-          end
-        end)
-      end)
+    direct_permissions = filter_user_permissions(current_rules, user, domain)
+    role_permissions = get_role_based_permissions(enforcer, current_rules, user, domain)
 
     (direct_permissions ++ role_permissions) |> Enum.uniq()
   end
+
+  defp filter_user_permissions(current_rules, user, domain) do
+    Enum.filter(current_rules, fn rule ->
+      matches_user_rule?(rule, user, domain)
+    end)
+  end
+
+  defp get_role_based_permissions(enforcer, current_rules, user, domain) do
+    roles = CasbinEx2.RoleManager.get_roles(enforcer.role_manager, user, domain)
+
+    Enum.flat_map(roles, fn role ->
+      filter_role_permissions(current_rules, role, domain)
+    end)
+  end
+
+  defp filter_role_permissions(current_rules, role, domain) do
+    Enum.filter(current_rules, fn rule ->
+      matches_user_rule?(rule, role, domain)
+    end)
+  end
+
+  defp matches_user_rule?([subject | _], target_subject, "") when subject == target_subject,
+    do: true
+
+  defp matches_user_rule?([subject, _, _, domain], target_subject, target_domain)
+       when subject == target_subject and domain == target_domain,
+       do: true
+
+  defp matches_user_rule?(_, _, _), do: false
 end

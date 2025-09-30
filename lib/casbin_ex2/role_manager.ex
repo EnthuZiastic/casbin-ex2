@@ -119,44 +119,39 @@ defmodule CasbinEx2.RoleManager do
 
   # Private functions
 
-  defp has_link_helper(
-         %__MODULE__{max_hierarchy_level: max_level, roles: roles},
-         role1,
-         role2,
-         domain,
-         level
-       ) do
-    if level >= max_level do
+  defp has_link_helper(role_manager, role1, role2, domain, level) do
+    if level >= role_manager.max_hierarchy_level do
       false
     else
-      key = build_key(role1, domain)
-      target_key = build_key(role2, domain)
-
-      case Map.get(roles, key) do
-        nil ->
-          false
-
-        role_set ->
-          if MapSet.member?(role_set, target_key) do
-            true
-          else
-            # Check inheritance transitively
-            role_set
-            |> MapSet.to_list()
-            |> Enum.any?(fn inherited_role_key ->
-              inherited_role = extract_role_from_key(inherited_role_key)
-
-              has_link_helper(
-                %__MODULE__{max_hierarchy_level: max_level, roles: roles},
-                inherited_role,
-                role2,
-                domain,
-                level + 1
-              )
-            end)
-          end
-      end
+      check_role_hierarchy(role_manager, role1, role2, domain, level)
     end
+  end
+
+  defp check_role_hierarchy(role_manager, role1, role2, domain, level) do
+    key = build_key(role1, domain)
+    target_key = build_key(role2, domain)
+
+    case Map.get(role_manager.roles, key) do
+      nil -> false
+      role_set -> check_role_membership(role_manager, role_set, role2, domain, level, target_key)
+    end
+  end
+
+  defp check_role_membership(role_manager, role_set, role2, domain, level, target_key) do
+    if MapSet.member?(role_set, target_key) do
+      true
+    else
+      check_transitive_inheritance(role_manager, role_set, role2, domain, level)
+    end
+  end
+
+  defp check_transitive_inheritance(role_manager, role_set, role2, domain, level) do
+    role_set
+    |> MapSet.to_list()
+    |> Enum.any?(fn inherited_role_key ->
+      inherited_role = extract_role_from_key(inherited_role_key)
+      has_link_helper(role_manager, inherited_role, role2, domain, level + 1)
+    end)
   end
 
   defp build_key(role, "") do

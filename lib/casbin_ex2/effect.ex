@@ -129,31 +129,42 @@ defmodule CasbinEx2.Effect do
 
   # priority(p.eft) || deny - uses priority ordering
   defp evaluate_priority_or_deny(policy_results) do
-    # Find the highest priority effect
-    matching_results = Enum.filter(policy_results, & &1.decision)
+    case filter_matching_results(policy_results) do
+      [] -> :deny
+      results -> evaluate_highest_priority_effect(results)
+    end
+  end
 
-    case matching_results do
-      [] ->
-        :deny
+  defp filter_matching_results(policy_results) do
+    Enum.filter(policy_results, & &1.decision)
+  end
 
-      results ->
-        # Sort by effect priority: deny > allow > indeterminate
-        sorted_results =
-          Enum.sort_by(results, fn result ->
-            case result.effect do
-              @effect_deny -> 0
-              @effect_allow -> 1
-              @effect_indeterminate -> 2
-              _ -> 3
-            end
-          end)
+  defp evaluate_highest_priority_effect(results) do
+    results
+    |> sort_by_effect_priority()
+    |> List.first()
+    |> map_effect_to_result()
+  end
 
-        case List.first(sorted_results) do
-          %{effect: @effect_deny} -> :deny
-          %{effect: @effect_allow} -> :allow
-          %{effect: @effect_indeterminate} -> :indeterminate
-          _ -> :deny
-        end
+  defp sort_by_effect_priority(results) do
+    Enum.sort_by(results, &effect_priority/1)
+  end
+
+  defp effect_priority(%{effect: effect}) do
+    case effect do
+      @effect_deny -> 0
+      @effect_allow -> 1
+      @effect_indeterminate -> 2
+      _ -> 3
+    end
+  end
+
+  defp map_effect_to_result(%{effect: effect}) do
+    case effect do
+      @effect_deny -> :deny
+      @effect_allow -> :allow
+      @effect_indeterminate -> :indeterminate
+      _ -> :deny
     end
   end
 
@@ -186,27 +197,38 @@ defmodule CasbinEx2.Effect do
   @spec evaluate_custom_effect(String.t(), [%{effect: String.t(), decision: boolean()}]) ::
           effect_result()
   def evaluate_custom_effect(expression, policy_results) do
-    # Parse and evaluate custom effect expressions
-    # This is a simplified implementation - in practice, you'd want a proper expression parser
     expr = String.trim(expression)
 
-    cond do
-      String.contains?(expr, "priority") and not String.contains?(expr, "subjectPriority") ->
-        evaluate_priority_or_deny(policy_results)
-
-      String.contains?(expr, "subjectPriority") ->
-        evaluate_subject_priority_or_deny(policy_results)
-
-      String.contains?(expr, "!") and String.contains?(expr, "deny") ->
-        evaluate_not_some_deny(policy_results)
-
-      String.contains?(expr, "allow") and String.contains?(expr, "&&") and
-        String.contains?(expr, "!") and String.contains?(expr, "deny") ->
-        evaluate_allow_and_deny(policy_results)
-
-      true ->
-        evaluate_some_allow(policy_results)
+    case classify_effect_expression(expr) do
+      :priority -> evaluate_priority_or_deny(policy_results)
+      :subject_priority -> evaluate_subject_priority_or_deny(policy_results)
+      :not_some_deny -> evaluate_not_some_deny(policy_results)
+      :allow_and_deny -> evaluate_allow_and_deny(policy_results)
+      :default -> evaluate_some_allow(policy_results)
     end
+  end
+
+  defp classify_effect_expression(expr) do
+    cond do
+      contains_priority_not_subject?(expr) -> :priority
+      String.contains?(expr, "subjectPriority") -> :subject_priority
+      contains_not_deny?(expr) -> :not_some_deny
+      contains_allow_and_not_deny?(expr) -> :allow_and_deny
+      true -> :default
+    end
+  end
+
+  defp contains_priority_not_subject?(expr) do
+    String.contains?(expr, "priority") and not String.contains?(expr, "subjectPriority")
+  end
+
+  defp contains_not_deny?(expr) do
+    String.contains?(expr, "!") and String.contains?(expr, "deny")
+  end
+
+  defp contains_allow_and_not_deny?(expr) do
+    String.contains?(expr, "allow") and String.contains?(expr, "&&") and
+      String.contains?(expr, "!") and String.contains?(expr, "deny")
   end
 
   @doc """

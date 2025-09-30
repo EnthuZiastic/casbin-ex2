@@ -949,21 +949,28 @@ defmodule CasbinEx2.EnforcerServer do
   end
 
   defp update_policies_impl(enforcer, _sec, ptype, old_rules, new_rules) do
-    if length(old_rules) != length(new_rules) do
-      {:error, :rule_count_mismatch}
-    else
-      # Update each old rule to corresponding new rule
-      result =
-        Enum.zip(old_rules, new_rules)
-        |> Enum.reduce_while({:ok, enforcer}, fn {old_rule, new_rule}, {:ok, acc_enforcer} ->
-          case update_policy_impl(acc_enforcer, "p", ptype, old_rule, new_rule) do
-            {:ok, updated_enforcer} -> {:cont, {:ok, updated_enforcer}}
-            error -> {:halt, error}
-          end
-        end)
-
-      result
+    case validate_rule_lengths(old_rules, new_rules) do
+      :ok -> update_rules_batch(enforcer, ptype, old_rules, new_rules)
+      error -> error
     end
+  end
+
+  defp validate_rule_lengths(old_rules, new_rules) do
+    if length(old_rules) == length(new_rules) do
+      :ok
+    else
+      {:error, :rule_count_mismatch}
+    end
+  end
+
+  defp update_rules_batch(enforcer, ptype, old_rules, new_rules) do
+    Enum.zip(old_rules, new_rules)
+    |> Enum.reduce_while({:ok, enforcer}, fn {old_rule, new_rule}, {:ok, acc_enforcer} ->
+      case update_policy_impl(acc_enforcer, "p", ptype, old_rule, new_rule) do
+        {:ok, updated_enforcer} -> {:cont, {:ok, updated_enforcer}}
+        error -> {:halt, error}
+      end
+    end)
   end
 
   defp update_grouping_policy_impl(enforcer, _sec, ptype, old_params, new_params) do
@@ -985,21 +992,20 @@ defmodule CasbinEx2.EnforcerServer do
   end
 
   defp update_grouping_policies_impl(enforcer, _sec, ptype, old_rules, new_rules) do
-    if length(old_rules) != length(new_rules) do
-      {:error, :rule_count_mismatch}
-    else
-      # Update each old rule to corresponding new rule
-      result =
-        Enum.zip(old_rules, new_rules)
-        |> Enum.reduce_while({:ok, enforcer}, fn {old_rule, new_rule}, {:ok, acc_enforcer} ->
-          case update_grouping_policy_impl(acc_enforcer, "g", ptype, old_rule, new_rule) do
-            {:ok, updated_enforcer} -> {:cont, {:ok, updated_enforcer}}
-            error -> {:halt, error}
-          end
-        end)
-
-      result
+    case validate_rule_lengths(old_rules, new_rules) do
+      :ok -> update_grouping_rules_batch(enforcer, ptype, old_rules, new_rules)
+      error -> error
     end
+  end
+
+  defp update_grouping_rules_batch(enforcer, ptype, old_rules, new_rules) do
+    Enum.zip(old_rules, new_rules)
+    |> Enum.reduce_while({:ok, enforcer}, fn {old_rule, new_rule}, {:ok, acc_enforcer} ->
+      case update_grouping_policy_impl(acc_enforcer, "g", ptype, old_rule, new_rule) do
+        {:ok, updated_enforcer} -> {:cont, {:ok, updated_enforcer}}
+        error -> {:halt, error}
+      end
+    end)
   end
 
   defp match_filtered_policy?(policy, field_index, field_values) do
