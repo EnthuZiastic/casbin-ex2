@@ -184,19 +184,64 @@ defmodule CasbinEx2.Enforcer do
   end
 
   @doc """
-  Batch enforcement for multiple requests.
+  Batch enforcement for multiple requests with concurrent processing.
+  Uses Task.async_stream for better performance on large request batches.
   """
   @spec batch_enforce(t(), [list()]) :: [boolean()]
+  def batch_enforce(enforcer, requests) when length(requests) > 10 do
+    # Use concurrent processing for larger batches
+    requests
+    |> Task.async_stream(
+      fn request -> enforce(enforcer, request) end,
+      max_concurrency: System.schedulers_online(),
+      timeout: 5000
+    )
+    |> Enum.map(fn {:ok, result} -> result end)
+  end
+
   def batch_enforce(enforcer, requests) do
+    # Use sequential processing for smaller batches to avoid overhead
     Enum.map(requests, &enforce(enforcer, &1))
   end
 
   @doc """
-  Batch enforcement with custom matcher.
+  Batch enforcement with custom matcher and concurrent processing.
   """
   @spec batch_enforce_with_matcher(t(), String.t(), [list()]) :: [boolean()]
+  def batch_enforce_with_matcher(enforcer, matcher, requests) when length(requests) > 10 do
+    # Use concurrent processing for larger batches
+    requests
+    |> Task.async_stream(
+      fn request -> enforce_with_matcher(enforcer, matcher, request) end,
+      max_concurrency: System.schedulers_online(),
+      timeout: 5000
+    )
+    |> Enum.map(fn {:ok, result} -> result end)
+  end
+
   def batch_enforce_with_matcher(enforcer, matcher, requests) do
+    # Use sequential processing for smaller batches
     Enum.map(requests, &enforce_with_matcher(enforcer, matcher, &1))
+  end
+
+  @doc """
+  Batch enforcement with explanations for multiple requests.
+  """
+  @spec batch_enforce_ex(t(), [list()]) :: [{boolean(), [String.t()]}]
+  def batch_enforce_ex(enforcer, requests) when length(requests) > 10 do
+    # Use concurrent processing for larger batches
+    requests
+    |> Task.async_stream(
+      fn request -> enforce_ex(enforcer, request) end,
+      max_concurrency: System.schedulers_online(),
+      timeout: 5000
+    )
+    |> Enum.map(fn {:ok, result} -> result end)
+  end
+
+  def batch_enforce_ex(enforcer, requests) do
+    # Use sequential processing for smaller batches
+    Enum.map(requests, &enforce_ex(enforcer, &1))
   end
 
   @doc """
@@ -387,6 +432,33 @@ defmodule CasbinEx2.Enforcer do
   end
 
   @doc """
+  Removes multiple named grouping policy rules.
+  """
+  @spec remove_named_grouping_policies(t(), String.t(), [[String.t()]]) ::
+          {:ok, t()} | {:error, term()}
+  def remove_named_grouping_policies(
+        %__MODULE__{grouping_policies: grouping_policies} = enforcer,
+        ptype,
+        rules
+      ) do
+    current_rules = Map.get(grouping_policies, ptype, [])
+
+    new_rules =
+      Enum.reduce(rules, current_rules, fn rule, acc ->
+        List.delete(acc, rule)
+      end)
+
+    new_grouping_policies = Map.put(grouping_policies, ptype, new_rules)
+    updated_enforcer = %{enforcer | grouping_policies: new_grouping_policies}
+
+    if enforcer.auto_save do
+      save_policy(updated_enforcer)
+    else
+      {:ok, updated_enforcer}
+    end
+  end
+
+  @doc """
   Gets all policy rules for the default policy type "p".
   """
   @spec get_policy(t()) :: [[String.t()]]
@@ -461,6 +533,57 @@ defmodule CasbinEx2.Enforcer do
   @spec add_grouping_policy(t(), [String.t()]) :: {:ok, t()} | {:error, term()}
   def add_grouping_policy(enforcer, params) do
     add_named_grouping_policy(enforcer, "g", params)
+  end
+
+  @doc """
+  Adds multiple named grouping policy rules.
+  """
+  @spec add_named_grouping_policies(t(), String.t(), [[String.t()]]) ::
+          {:ok, t()} | {:error, term()}
+  def add_named_grouping_policies(
+        %__MODULE__{grouping_policies: grouping_policies, role_manager: role_manager} = enforcer,
+        ptype,
+        rules
+      ) do
+    current_rules = Map.get(grouping_policies, ptype, [])
+
+    new_rules =
+      Enum.reduce(rules, current_rules, fn rule, acc ->
+        if rule in acc do
+          acc
+        else
+          [rule | acc]
+        end
+      end)
+
+    new_grouping_policies = Map.put(grouping_policies, ptype, new_rules)
+
+    # Update role manager for all new rules
+    updated_role_manager =
+      Enum.reduce(rules, role_manager, fn params, rm ->
+        case params do
+          [user, role] ->
+            RoleManager.add_link(rm, user, role, "")
+
+          [user, role, domain] ->
+            RoleManager.add_link(rm, user, role, domain)
+
+          _ ->
+            rm
+        end
+      end)
+
+    updated_enforcer = %{
+      enforcer
+      | grouping_policies: new_grouping_policies,
+        role_manager: updated_role_manager
+    }
+
+    if enforcer.auto_save do
+      save_policy(updated_enforcer)
+    else
+      {:ok, updated_enforcer}
+    end
   end
 
   @doc """
@@ -865,14 +988,18 @@ defmodule CasbinEx2.Enforcer do
     policy_domains =
       policies
       |> Map.values()
-      |> List.flatten()
+      # Only flatten one level
+      |> Enum.flat_map(& &1)
+      |> Enum.filter(&is_list/1)
       |> Enum.map(&Enum.at(&1, 3))
       |> Enum.reject(&(&1 == nil or &1 == ""))
 
     grouping_domains =
       grouping_policies
       |> Map.values()
-      |> List.flatten()
+      # Only flatten one level
+      |> Enum.flat_map(& &1)
+      |> Enum.filter(&is_list/1)
       |> Enum.map(&Enum.at(&1, 2))
       |> Enum.reject(&(&1 == nil or &1 == ""))
 
@@ -1015,7 +1142,7 @@ defmodule CasbinEx2.Enforcer do
         _ -> false
       end)
 
-    remove_named_policies(enforcer, "g", rules_to_remove)
+    remove_named_grouping_policies(enforcer, "g", rules_to_remove)
   end
 
   @doc """
@@ -1034,7 +1161,7 @@ defmodule CasbinEx2.Enforcer do
         _ -> false
       end)
 
-    remove_named_policies(enforcer, "g", rules_to_remove)
+    remove_named_grouping_policies(enforcer, "g", rules_to_remove)
   end
 
   @doc """
@@ -1459,4 +1586,379 @@ defmodule CasbinEx2.Enforcer do
     |> String.replace(~r/\[([^\]]+)\]/, "(\\1)")
     |> String.replace("!", "^")
   end
+
+  # Extended RBAC API - Additional functions for permissions and roles
+
+  @doc """
+  Updates multiple grouping policy rules.
+  """
+  @spec update_grouping_policies(t(), [[String.t()]], [[String.t()]]) ::
+          {:ok, t()} | {:error, term()}
+  def update_grouping_policies(enforcer, old_rules, new_rules) do
+    update_named_grouping_policies(enforcer, "g", old_rules, new_rules)
+  end
+
+  @doc """
+  Updates multiple named grouping policy rules.
+  """
+  @spec update_named_grouping_policies(t(), String.t(), [[String.t()]], [[String.t()]]) ::
+          {:ok, t()} | {:error, term()}
+  def update_named_grouping_policies(_enforcer, _ptype, old_rules, new_rules)
+      when length(old_rules) != length(new_rules) do
+    {:error, :rule_count_mismatch}
+  end
+
+  def update_named_grouping_policies(enforcer, ptype, old_rules, new_rules) do
+    Enum.zip(old_rules, new_rules)
+    |> Enum.reduce_while({:ok, enforcer}, &update_rule_pair(&1, &2, ptype))
+  end
+
+  defp update_rule_pair({old_rule, new_rule}, {:ok, acc_enforcer}, ptype) do
+    case update_named_grouping_policy(acc_enforcer, ptype, old_rule, new_rule) do
+      {:ok, updated_enforcer} -> {:cont, {:ok, updated_enforcer}}
+      error -> {:halt, error}
+    end
+  end
+
+  @doc """
+  Gets direct permissions for a user (does not include permissions through roles).
+  Returns permissions in [obj, act] format.
+  """
+  @spec get_permissions_for_user(t(), String.t(), String.t()) :: [[String.t()]]
+  def get_permissions_for_user(%__MODULE__{policies: policies} = _enforcer, user, domain \\ "") do
+    get_permissions_for_user_direct(policies, user, domain)
+    |> Enum.map(fn
+      [_user, obj, act] -> [obj, act]
+      [_user, obj, act, _domain] -> [obj, act]
+      other -> other
+    end)
+  end
+
+  @doc """
+  Gets implicit permissions for a user (includes permissions through roles).
+  """
+  @spec get_implicit_permissions_for_user(t(), String.t(), String.t()) :: [[String.t()]]
+  def get_implicit_permissions_for_user(
+        %__MODULE__{role_manager: role_manager, policies: policies} = _enforcer,
+        user,
+        domain \\ ""
+      ) do
+    # Get direct permissions
+    direct_permissions = get_permissions_for_user_direct(policies, user, domain)
+
+    # Get permissions through roles
+    role_permissions =
+      case CasbinEx2.RoleManager.get_roles(role_manager, user, domain) do
+        roles when is_list(roles) ->
+          Enum.flat_map(roles, fn role ->
+            get_permissions_for_user_direct(policies, role, domain)
+          end)
+
+        _ ->
+          []
+      end
+
+    (direct_permissions ++ role_permissions) |> Enum.uniq()
+  end
+
+  @doc """
+  Gets implicit roles for a user (includes inherited roles).
+  """
+  @spec get_implicit_roles_for_user(t(), String.t(), String.t()) :: [String.t()]
+  def get_implicit_roles_for_user(
+        %__MODULE__{role_manager: role_manager} = _enforcer,
+        user,
+        domain \\ ""
+      ) do
+    case CasbinEx2.RoleManager.get_roles(role_manager, user, domain) do
+      roles when is_list(roles) -> roles
+      _ -> []
+    end
+  end
+
+  @doc """
+  Checks if a user has a specific permission.
+  """
+  @spec has_permission_for_user(t(), String.t(), [String.t()]) :: boolean()
+  def has_permission_for_user(enforcer, user, permission) do
+    permissions = get_implicit_permissions_for_user(enforcer, user)
+    # Extract object and action from policy format [user, obj, act] -> [obj, act]
+    extracted_permissions =
+      Enum.map(permissions, fn
+        [_user, obj, act] -> [obj, act]
+        [_user, obj, act, _domain] -> [obj, act]
+        other -> other
+      end)
+
+    permission in extracted_permissions
+  end
+
+  @doc """
+  Deletes a user (removes all policies and grouping policies for the user).
+  """
+  @spec delete_user(t(), String.t()) :: {:ok, t()} | {:error, term()}
+  def delete_user(
+        %__MODULE__{
+          policies: policies,
+          grouping_policies: grouping_policies,
+          role_manager: role_manager
+        } = enforcer,
+        user
+      ) do
+    # First, get all roles for the user and remove them from role manager
+    user_roles =
+      grouping_policies
+      |> Map.get("g", [])
+      |> Enum.filter(fn
+        [^user, _role] -> true
+        [^user, _role, _domain] -> true
+        _ -> false
+      end)
+
+    # Remove each role link from role manager
+    updated_role_manager =
+      Enum.reduce(user_roles, role_manager, fn
+        [^user, role], acc -> CasbinEx2.RoleManager.delete_link(acc, user, role, "")
+        [^user, role, domain], acc -> CasbinEx2.RoleManager.delete_link(acc, user, role, domain)
+      end)
+
+    # Remove user from all policies
+    new_policies = remove_user_from_policies(policies, user)
+
+    # Remove user from all grouping policies (roles)
+    new_grouping_policies = remove_user_from_grouping_policies(grouping_policies, user)
+
+    updated_enforcer = %{
+      enforcer
+      | policies: new_policies,
+        grouping_policies: new_grouping_policies,
+        role_manager: updated_role_manager
+    }
+
+    if enforcer.auto_save do
+      save_policy(updated_enforcer)
+    else
+      {:ok, updated_enforcer}
+    end
+  end
+
+  @doc """
+  Deletes a role (removes all grouping policies for the role).
+  """
+  @spec delete_role(t(), String.t()) :: {:ok, t()} | {:error, term()}
+  def delete_role(
+        %__MODULE__{grouping_policies: grouping_policies, role_manager: role_manager} = enforcer,
+        role
+      ) do
+    # First, get all user-role relationships for this role and remove them from role manager
+    role_relationships =
+      grouping_policies
+      |> Map.get("g", [])
+      |> Enum.filter(fn
+        [_user, ^role] -> true
+        [_user, ^role, _domain] -> true
+        _ -> false
+      end)
+
+    # Remove each role link from role manager
+    updated_role_manager =
+      Enum.reduce(role_relationships, role_manager, fn
+        [user, ^role], acc -> CasbinEx2.RoleManager.delete_link(acc, user, role, "")
+        [user, ^role, domain], acc -> CasbinEx2.RoleManager.delete_link(acc, user, role, domain)
+      end)
+
+    # Remove role from all grouping policies
+    new_grouping_policies = remove_role_from_grouping_policies(grouping_policies, role)
+
+    updated_enforcer = %{
+      enforcer
+      | grouping_policies: new_grouping_policies,
+        role_manager: updated_role_manager
+    }
+
+    if enforcer.auto_save do
+      save_policy(updated_enforcer)
+    else
+      {:ok, updated_enforcer}
+    end
+  end
+
+  @doc """
+  Deletes a permission (removes the permission from all policies).
+  """
+  @spec delete_permission(t(), [String.t()]) :: {:ok, t()} | {:error, term()}
+  def delete_permission(%__MODULE__{policies: policies} = enforcer, permission) do
+    # Remove permission from all policies
+    new_policies = remove_permission_from_policies(policies, permission)
+
+    updated_enforcer = %{enforcer | policies: new_policies}
+
+    if enforcer.auto_save do
+      save_policy(updated_enforcer)
+    else
+      {:ok, updated_enforcer}
+    end
+  end
+
+  @doc """
+  Gets all users who have a specific permission.
+  """
+  @spec get_users_for_permission(t(), [String.t()]) :: [String.t()]
+  def get_users_for_permission(%__MODULE__{policies: policies} = _enforcer, permission) do
+    policies
+    |> Map.get("p", [])
+    |> Enum.filter(fn policy ->
+      case policy do
+        [_user | perm] -> perm == permission
+        _ -> false
+      end
+    end)
+    |> Enum.map(&List.first/1)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  end
+
+  @doc """
+  Adds multiple roles for a user.
+  """
+  @spec add_roles_for_user(t(), String.t(), [String.t()], String.t()) ::
+          {:ok, t()} | {:error, term()}
+  def add_roles_for_user(enforcer, user, roles, domain \\ "") do
+    rules =
+      Enum.map(roles, fn role ->
+        if domain == "", do: [user, role], else: [user, role, domain]
+      end)
+
+    add_named_grouping_policies(enforcer, "g", rules)
+  end
+
+  @doc """
+  Adds multiple permissions for a user.
+  """
+  @spec add_permissions_for_user(t(), String.t(), [[String.t()]]) :: {:ok, t()} | {:error, term()}
+  def add_permissions_for_user(enforcer, user, permissions) do
+    rules =
+      Enum.map(permissions, fn permission ->
+        [user | permission]
+      end)
+
+    add_named_policies(enforcer, "p", rules)
+  end
+
+  @doc """
+  Deletes specific permissions for a user.
+  """
+  @spec delete_permissions_for_user(t(), String.t(), [[String.t()]]) ::
+          {:ok, t()} | {:error, term()}
+  def delete_permissions_for_user(%__MODULE__{policies: policies} = enforcer, user, permissions) do
+    # Remove specific permissions for the user
+    new_policies =
+      policies
+      |> Enum.map(&filter_user_specific_permissions(&1, user, permissions))
+      |> Enum.into(%{})
+
+    updated_enforcer = %{enforcer | policies: new_policies}
+
+    if enforcer.auto_save do
+      save_policy(updated_enforcer)
+    else
+      {:ok, updated_enforcer}
+    end
+  end
+
+  @doc """
+  Deletes all permissions for a user.
+  """
+  @spec delete_permissions_for_user(t(), String.t()) :: {:ok, t()} | {:error, term()}
+  def delete_permissions_for_user(%__MODULE__{policies: policies} = enforcer, user) do
+    # Remove all policies where the user is the subject
+    new_policies = remove_user_from_policies(policies, user)
+
+    updated_enforcer = %{enforcer | policies: new_policies}
+
+    if enforcer.auto_save do
+      save_policy(updated_enforcer)
+    else
+      {:ok, updated_enforcer}
+    end
+  end
+
+  # Helper functions for RBAC operations
+
+  defp get_permissions_for_user_direct(policies, user, domain) do
+    policies
+    |> Map.get("p", [])
+    |> Enum.filter(fn policy ->
+      case policy do
+        [^user, _obj, _act, ^domain] -> true
+        [^user, _obj, _act] when domain == "" -> true
+        _ -> false
+      end
+    end)
+  end
+
+  defp remove_user_from_policies(policies, user) do
+    policies
+    |> Enum.map(&filter_user_policy_rules(&1, user))
+    |> Enum.into(%{})
+  end
+
+  defp filter_user_policy_rules({ptype, rules}, user) do
+    filtered_rules = Enum.reject(rules, &starts_with_user?(&1, user))
+    {ptype, filtered_rules}
+  end
+
+  defp starts_with_user?([user | _], user), do: true
+  defp starts_with_user?(_, _), do: false
+
+  defp filter_user_specific_permissions({ptype, rules}, user, permissions) do
+    filtered_rules = Enum.reject(rules, &matches_user_permission?(&1, user, permissions))
+    {ptype, filtered_rules}
+  end
+
+  defp matches_user_permission?([user | perm], user, permissions), do: perm in permissions
+  defp matches_user_permission?(_, _, _), do: false
+
+  defp remove_user_from_grouping_policies(grouping_policies, user) do
+    grouping_policies
+    |> Enum.map(&filter_user_grouping_rules(&1, user))
+    |> Enum.into(%{})
+  end
+
+  defp filter_user_grouping_rules({ptype, rules}, user) do
+    filtered_rules = Enum.reject(rules, &matches_user?(&1, user))
+    {ptype, filtered_rules}
+  end
+
+  defp matches_user?([user | _], user), do: true
+  defp matches_user?(_, _), do: false
+
+  defp remove_role_from_grouping_policies(grouping_policies, role) do
+    grouping_policies
+    |> Enum.map(&filter_role_rules(&1, role))
+    |> Enum.into(%{})
+  end
+
+  defp filter_role_rules({ptype, rules}, role) do
+    filtered_rules = Enum.reject(rules, &matches_role?(&1, role))
+    {ptype, filtered_rules}
+  end
+
+  defp matches_role?([_user, role], role), do: true
+  defp matches_role?([_user, role, _domain], role), do: true
+  defp matches_role?(_, _), do: false
+
+  defp remove_permission_from_policies(policies, permission) do
+    policies
+    |> Enum.map(&filter_permission_rules(&1, permission))
+    |> Enum.into(%{})
+  end
+
+  defp filter_permission_rules({ptype, rules}, permission) do
+    filtered_rules = Enum.reject(rules, &matches_permission?(&1, permission))
+    {ptype, filtered_rules}
+  end
+
+  defp matches_permission?([_user | perm], permission), do: perm == permission
+  defp matches_permission?(_, _), do: false
 end

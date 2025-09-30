@@ -34,10 +34,45 @@ defmodule CasbinEx2.EnforcerServer do
   end
 
   @doc """
+  Performs authorization enforcement with explanations. Returns {allowed, explanations}.
+  """
+  def enforce_ex(name, request) do
+    GenServer.call(via_tuple(name), {:enforce_ex, request})
+  end
+
+  @doc """
+  Performs authorization enforcement with custom matcher.
+  """
+  def enforce_with_matcher(name, matcher, request) do
+    GenServer.call(via_tuple(name), {:enforce_with_matcher, matcher, request})
+  end
+
+  @doc """
+  Performs authorization enforcement with custom matcher and explanations.
+  """
+  def enforce_ex_with_matcher(name, matcher, request) do
+    GenServer.call(via_tuple(name), {:enforce_ex_with_matcher, matcher, request})
+  end
+
+  @doc """
   Performs batch enforcement for multiple requests.
   """
   def batch_enforce(name, requests) do
     GenServer.call(via_tuple(name), {:batch_enforce, requests})
+  end
+
+  @doc """
+  Performs batch enforcement with explanations for multiple requests.
+  """
+  def batch_enforce_ex(name, requests) do
+    GenServer.call(via_tuple(name), {:batch_enforce_ex, requests})
+  end
+
+  @doc """
+  Performs batch enforcement with custom matcher.
+  """
+  def batch_enforce_with_matcher(name, matcher, requests) do
+    GenServer.call(via_tuple(name), {:batch_enforce_with_matcher, matcher, requests})
   end
 
   @doc """
@@ -335,6 +370,196 @@ defmodule CasbinEx2.EnforcerServer do
   end
 
   #
+  # Management APIs
+  #
+
+  @doc """
+  Gets all subjects that show up in policies.
+  """
+  def get_all_subjects(name) do
+    GenServer.call(via_tuple(name), {:get_all_subjects})
+  end
+
+  @doc """
+  Gets all objects that show up in policies.
+  """
+  def get_all_objects(name) do
+    GenServer.call(via_tuple(name), {:get_all_objects})
+  end
+
+  @doc """
+  Gets all actions that show up in policies.
+  """
+  def get_all_actions(name) do
+    GenServer.call(via_tuple(name), {:get_all_actions})
+  end
+
+  @doc """
+  Gets all roles that show up in grouping policies.
+  """
+  def get_all_roles(name) do
+    GenServer.call(via_tuple(name), {:get_all_roles})
+  end
+
+  @doc """
+  Gets all domains from policies and grouping policies.
+  """
+  def get_all_domains(name) do
+    GenServer.call(via_tuple(name), {:get_all_domains})
+  end
+
+  @doc """
+  Updates a policy rule.
+  """
+  def update_policy(name, old_policy, new_policy) do
+    GenServer.call(via_tuple(name), {:update_policy, old_policy, new_policy})
+  end
+
+  @doc """
+  Updates multiple policy rules.
+  """
+  def update_policies(name, old_policies, new_policies) do
+    GenServer.call(via_tuple(name), {:update_policies, old_policies, new_policies})
+  end
+
+  @doc """
+  Updates a grouping policy rule.
+  """
+  def update_grouping_policy(name, old_rule, new_rule) do
+    GenServer.call(via_tuple(name), {:update_grouping_policy, old_rule, new_rule})
+  end
+
+  @doc """
+  Updates multiple grouping policy rules.
+  """
+  def update_grouping_policies(name, old_rules, new_rules) do
+    GenServer.call(via_tuple(name), {:update_grouping_policies, old_rules, new_rules})
+  end
+
+  @doc """
+  Gets implicit permissions for a user (includes permissions through roles).
+  """
+  def get_implicit_permissions_for_user(name, user, domain \\ "") do
+    GenServer.call(via_tuple(name), {:get_implicit_permissions_for_user, user, domain})
+  end
+
+  @doc """
+  Gets implicit roles for a user (includes inherited roles).
+  """
+  def get_implicit_roles_for_user(name, user, domain \\ "") do
+    GenServer.call(via_tuple(name), {:get_implicit_roles_for_user, user, domain})
+  end
+
+  @doc """
+  Checks if a user has a specific permission.
+  """
+  def has_permission_for_user(name, user, permission) when is_list(permission) do
+    GenServer.call(via_tuple(name), {:has_permission_for_user, user, permission})
+  end
+
+  #
+  # Complete RBAC API
+  #
+
+  @doc """
+  Completely removes a user (removes user from all policies and grouping policies).
+  """
+  def delete_user(name, user) do
+    GenServer.call(via_tuple(name), {:delete_user, user})
+  end
+
+  @doc """
+  Completely removes a role (removes role from all grouping policies).
+  """
+  def delete_role(name, role) do
+    GenServer.call(via_tuple(name), {:delete_role, role})
+  end
+
+  @doc """
+  Removes a permission (removes permission from all policies).
+  """
+  def delete_permission(name, permission) do
+    GenServer.call(via_tuple(name), {:delete_permission, permission})
+  end
+
+  @doc """
+  Gets all users who have the specified permission.
+  """
+  def get_users_for_permission(name, permission) do
+    GenServer.call(via_tuple(name), {:get_users_for_permission, permission})
+  end
+
+  @doc """
+  Adds multiple roles for a user in one operation.
+  """
+  def add_roles_for_user(name, user, roles, domain \\ "") do
+    GenServer.call(via_tuple(name), {:add_roles_for_user, user, roles, domain})
+  end
+
+  @doc """
+  Adds multiple permissions for a user in one operation.
+  """
+  def add_permissions_for_user(name, user, permissions) do
+    GenServer.call(via_tuple(name), {:add_permissions_for_user, user, permissions})
+  end
+
+  @doc """
+  Deletes multiple permissions for a user in one operation.
+  """
+  def delete_permissions_for_user(name, user, permissions) do
+    GenServer.call(via_tuple(name), {:delete_permissions_for_user, user, permissions})
+  end
+
+  @doc """
+  Gets all users who have the specified role in the given domain.
+  """
+  def get_users_for_role_in_domain(name, role, domain) do
+    GenServer.call(via_tuple(name), {:get_users_for_role_in_domain, role, domain})
+  end
+
+  @doc """
+  Gets all roles for a user in the given domain.
+  """
+  def get_roles_for_user_in_domain(name, user, domain) do
+    GenServer.call(via_tuple(name), {:get_roles_for_user_in_domain, user, domain})
+  end
+
+  @doc """
+  Adds a role for a user in the specified domain.
+  """
+  def add_role_for_user_in_domain(name, user, role, domain) do
+    GenServer.call(via_tuple(name), {:add_role_for_user_in_domain, user, role, domain})
+  end
+
+  @doc """
+  Deletes a role for a user in the specified domain.
+  """
+  def delete_role_for_user_in_domain(name, user, role, domain) do
+    GenServer.call(via_tuple(name), {:delete_role_for_user_in_domain, user, role, domain})
+  end
+
+  @doc """
+  Deletes all roles for a user in the specified domain.
+  """
+  def delete_roles_for_user_in_domain(name, user, domain) do
+    GenServer.call(via_tuple(name), {:delete_roles_for_user_in_domain, user, domain})
+  end
+
+  @doc """
+  Gets all users in the specified domain.
+  """
+  def get_all_users_by_domain(name, domain) do
+    GenServer.call(via_tuple(name), {:get_all_users_by_domain, domain})
+  end
+
+  @doc """
+  Deletes all users in the specified domain.
+  """
+  def delete_all_users_by_domain(name, domain) do
+    GenServer.call(via_tuple(name), {:delete_all_users_by_domain, domain})
+  end
+
+  #
   # Server Callbacks
   #
 
@@ -357,8 +582,33 @@ defmodule CasbinEx2.EnforcerServer do
     {:reply, result, enforcer}
   end
 
+  def handle_call({:enforce_ex, request}, _from, enforcer) do
+    result = Enforcer.enforce_ex(enforcer, request)
+    {:reply, result, enforcer}
+  end
+
+  def handle_call({:enforce_with_matcher, matcher, request}, _from, enforcer) do
+    result = Enforcer.enforce_with_matcher(enforcer, matcher, request)
+    {:reply, result, enforcer}
+  end
+
+  def handle_call({:enforce_ex_with_matcher, matcher, request}, _from, enforcer) do
+    result = Enforcer.enforce_ex_with_matcher(enforcer, matcher, request)
+    {:reply, result, enforcer}
+  end
+
   def handle_call({:batch_enforce, requests}, _from, enforcer) do
-    results = Enum.map(requests, &Enforcer.enforce(enforcer, &1))
+    results = Enforcer.batch_enforce(enforcer, requests)
+    {:reply, results, enforcer}
+  end
+
+  def handle_call({:batch_enforce_ex, requests}, _from, enforcer) do
+    results = Enforcer.batch_enforce_ex(enforcer, requests)
+    {:reply, results, enforcer}
+  end
+
+  def handle_call({:batch_enforce_with_matcher, matcher, requests}, _from, enforcer) do
+    results = Enforcer.batch_enforce_with_matcher(enforcer, matcher, requests)
     {:reply, results, enforcer}
   end
 
@@ -516,6 +766,239 @@ defmodule CasbinEx2.EnforcerServer do
     {:ok, new_enforcer} = Enforcer.build_role_links(enforcer)
     update_ets(new_enforcer)
     {:reply, :ok, new_enforcer}
+  end
+
+  # Management API handlers
+  def handle_call({:get_all_subjects}, _from, enforcer) do
+    result = Enforcer.get_all_subjects(enforcer)
+    {:reply, result, enforcer}
+  end
+
+  def handle_call({:get_all_objects}, _from, enforcer) do
+    result = Enforcer.get_all_objects(enforcer)
+    {:reply, result, enforcer}
+  end
+
+  def handle_call({:get_all_actions}, _from, enforcer) do
+    result = Enforcer.get_all_actions(enforcer)
+    {:reply, result, enforcer}
+  end
+
+  def handle_call({:get_all_roles}, _from, enforcer) do
+    result = Enforcer.get_all_roles(enforcer)
+    {:reply, result, enforcer}
+  end
+
+  def handle_call({:get_all_domains}, _from, enforcer) do
+    result = Enforcer.get_all_domains(enforcer)
+    {:reply, result, enforcer}
+  end
+
+  def handle_call({:update_policy, old_policy, new_policy}, _from, enforcer) do
+    case Enforcer.update_policy(enforcer, old_policy, new_policy) do
+      {:ok, new_enforcer} ->
+        update_ets(new_enforcer)
+        {:reply, true, new_enforcer}
+
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:update_policies, old_policies, new_policies}, _from, enforcer) do
+    case Enforcer.update_policies(enforcer, old_policies, new_policies) do
+      {:ok, new_enforcer} ->
+        update_ets(new_enforcer)
+        {:reply, true, new_enforcer}
+
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:update_grouping_policy, old_rule, new_rule}, _from, enforcer) do
+    case Enforcer.update_grouping_policy(enforcer, old_rule, new_rule) do
+      {:ok, new_enforcer} ->
+        update_ets(new_enforcer)
+        {:reply, true, new_enforcer}
+
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:update_grouping_policies, old_rules, new_rules}, _from, enforcer) do
+    case Enforcer.update_grouping_policies(enforcer, old_rules, new_rules) do
+      {:ok, new_enforcer} ->
+        update_ets(new_enforcer)
+        {:reply, true, new_enforcer}
+
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:get_implicit_permissions_for_user, user, domain}, _from, enforcer) do
+    result = get_implicit_permissions_for_user_impl(enforcer, user, domain)
+    {:reply, result, enforcer}
+  end
+
+  def handle_call({:get_implicit_roles_for_user, user, domain}, _from, enforcer) do
+    result = get_implicit_roles_for_user_impl(enforcer, user, domain)
+    {:reply, result, enforcer}
+  end
+
+  def handle_call({:has_permission_for_user, user, permission}, _from, enforcer) do
+    result = has_permission_for_user_impl(enforcer, user, permission)
+    {:reply, result, enforcer}
+  end
+
+  # Complete RBAC API handlers
+
+  def handle_call({:delete_user, user}, _from, enforcer) do
+    case Enforcer.delete_user(enforcer, user) do
+      {:ok, new_enforcer} ->
+        update_ets(new_enforcer)
+        {:reply, true, new_enforcer}
+
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:delete_role, role}, _from, enforcer) do
+    case Enforcer.delete_role(enforcer, role) do
+      {:ok, new_enforcer} ->
+        update_ets(new_enforcer)
+        {:reply, true, new_enforcer}
+
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:delete_permission, permission}, _from, enforcer) do
+    case Enforcer.delete_permission(enforcer, permission) do
+      {:ok, new_enforcer} ->
+        update_ets(new_enforcer)
+        {:reply, true, new_enforcer}
+
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:get_users_for_permission, permission}, _from, enforcer) do
+    result = Enforcer.get_users_for_permission(enforcer, permission)
+    {:reply, result, enforcer}
+  end
+
+  def handle_call({:add_roles_for_user, user, roles, domain}, _from, enforcer) do
+    case Enforcer.add_roles_for_user(enforcer, user, roles, domain) do
+      {:ok, new_enforcer} ->
+        update_ets(new_enforcer)
+        {:reply, true, new_enforcer}
+
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:add_permissions_for_user, user, permissions}, _from, enforcer) do
+    case Enforcer.add_permissions_for_user(enforcer, user, permissions) do
+      {:ok, new_enforcer} ->
+        update_ets(new_enforcer)
+        {:reply, true, new_enforcer}
+
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:add_permission_for_user, user, permission}, _from, enforcer) do
+    case Enforcer.add_permissions_for_user(enforcer, user, [permission]) do
+      {:ok, new_enforcer} ->
+        update_ets(new_enforcer)
+        {:reply, true, new_enforcer}
+
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:get_permissions_for_user, user, domain}, _from, enforcer) do
+    result = Enforcer.get_permissions_for_user(enforcer, user, domain)
+    {:reply, result, enforcer}
+  end
+
+  def handle_call({:delete_permissions_for_user, user, permissions}, _from, enforcer) do
+    case Enforcer.delete_permissions_for_user(enforcer, user, permissions) do
+      {:ok, new_enforcer} ->
+        update_ets(new_enforcer)
+        {:reply, true, new_enforcer}
+
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:get_users_for_role_in_domain, role, domain}, _from, enforcer) do
+    result = Enforcer.get_users_for_role_in_domain(enforcer, role, domain)
+    {:reply, result, enforcer}
+  end
+
+  def handle_call({:get_roles_for_user_in_domain, user, domain}, _from, enforcer) do
+    result = Enforcer.get_roles_for_user_in_domain(enforcer, user, domain)
+    {:reply, result, enforcer}
+  end
+
+  def handle_call({:add_role_for_user_in_domain, user, role, domain}, _from, enforcer) do
+    case Enforcer.add_role_for_user_in_domain(enforcer, user, role, domain) do
+      {:ok, new_enforcer} ->
+        update_ets(new_enforcer)
+        {:reply, true, new_enforcer}
+
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:delete_role_for_user_in_domain, user, role, domain}, _from, enforcer) do
+    case Enforcer.delete_role_for_user_in_domain(enforcer, user, role, domain) do
+      {:ok, new_enforcer} ->
+        update_ets(new_enforcer)
+        {:reply, true, new_enforcer}
+
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:delete_roles_for_user_in_domain, user, domain}, _from, enforcer) do
+    case Enforcer.delete_roles_for_user_in_domain(enforcer, user, domain) do
+      {:ok, new_enforcer} ->
+        update_ets(new_enforcer)
+        {:reply, true, new_enforcer}
+
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:get_all_users_by_domain, domain}, _from, enforcer) do
+    result = Enforcer.get_all_users_by_domain(enforcer, domain)
+    {:reply, result, enforcer}
+  end
+
+  def handle_call({:delete_all_users_by_domain, domain}, _from, enforcer) do
+    case Enforcer.delete_all_users_by_domain(enforcer, domain) do
+      {:ok, new_enforcer} ->
+        update_ets(new_enforcer)
+        {:reply, true, new_enforcer}
+
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
   end
 
   # Self-Management API handlers (bypass auto-notify)
@@ -1019,5 +1502,19 @@ defmodule CasbinEx2.EnforcerServer do
         policy_value -> policy_value == value
       end
     end)
+  end
+
+  # Helper implementations for new management APIs
+
+  defp get_implicit_permissions_for_user_impl(enforcer, user, domain) do
+    Enforcer.get_implicit_permissions_for_user(enforcer, user, domain)
+  end
+
+  defp get_implicit_roles_for_user_impl(enforcer, user, domain) do
+    Enforcer.get_implicit_roles_for_user(enforcer, user, domain)
+  end
+
+  defp has_permission_for_user_impl(enforcer, user, permission) do
+    Enforcer.has_permission_for_user(enforcer, user, permission)
   end
 end
