@@ -45,6 +45,23 @@ defmodule CasbinEx2.Enforcer do
         }
 
   @doc """
+  Creates a new enforcer with model and adapter.
+
+  ## Examples
+
+      model = CasbinEx2.Model.new()
+      adapter = CasbinEx2.Adapter.MemoryAdapter.new()
+      enforcer = CasbinEx2.Enforcer.new(model, adapter)
+  """
+  @spec new(Model.t(), Adapter.t()) :: t()
+  def new(model, adapter) do
+    case init_with_model_and_adapter(model, adapter) do
+      {:ok, enforcer} -> enforcer
+      {:error, reason} -> raise "Failed to create enforcer: #{inspect(reason)}"
+    end
+  end
+
+  @doc """
   Creates a new enforcer.
 
   ## Examples
