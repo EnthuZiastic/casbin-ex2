@@ -87,38 +87,9 @@ defmodule CasbinEx2.Adapter.FileAdapter do
   defp parse_policies(content) do
     {policies, grouping_policies} =
       content
-      |> String.split("\n")
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == "" or String.starts_with?(&1, "#")))
+      |> prepare_policy_lines()
       |> Enum.reduce({%{}, %{}}, fn line, {p_acc, g_acc} ->
-        case String.split(line, ",") |> Enum.map(&String.trim/1) do
-          ["p" | rest] ->
-            type = "p"
-            policies = Map.get(p_acc, type, [])
-            updated_policies = Map.put(p_acc, type, [rest | policies])
-            {updated_policies, g_acc}
-
-          ["g" | rest] ->
-            type = "g"
-            grouping_policies = Map.get(g_acc, type, [])
-            updated_grouping = Map.put(g_acc, type, [rest | grouping_policies])
-            {p_acc, updated_grouping}
-
-          [ptype | rest] when ptype != "" ->
-            # Handle custom policy types (p2, p3, etc.) and grouping types (g2, g3, etc.)
-            if String.starts_with?(ptype, "g") do
-              grouping_policies = Map.get(g_acc, ptype, [])
-              updated_grouping = Map.put(g_acc, ptype, [rest | grouping_policies])
-              {p_acc, updated_grouping}
-            else
-              policies = Map.get(p_acc, ptype, [])
-              updated_policies = Map.put(p_acc, ptype, [rest | policies])
-              {updated_policies, g_acc}
-            end
-
-          _ ->
-            {p_acc, g_acc}
-        end
+        process_policy_line(line, p_acc, g_acc)
       end)
 
     # Reverse the lists since we prepended
@@ -126,6 +97,42 @@ defmodule CasbinEx2.Adapter.FileAdapter do
     grouping_policies = Map.new(grouping_policies, fn {k, v} -> {k, Enum.reverse(v)} end)
 
     {:ok, policies, grouping_policies}
+  end
+
+  defp prepare_policy_lines(content) do
+    content
+    |> String.split("\n")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == "" or String.starts_with?(&1, "#")))
+  end
+
+  defp process_policy_line(line, p_acc, g_acc) do
+    case String.split(line, ",") |> Enum.map(&String.trim/1) do
+      ["p" | rest] -> add_policy_rule(p_acc, g_acc, "p", rest)
+      ["g" | rest] -> add_grouping_rule(p_acc, g_acc, "g", rest)
+      [ptype | rest] when ptype != "" -> add_custom_rule(p_acc, g_acc, ptype, rest)
+      _ -> {p_acc, g_acc}
+    end
+  end
+
+  defp add_policy_rule(p_acc, g_acc, type, rest) do
+    policies = Map.get(p_acc, type, [])
+    updated_policies = Map.put(p_acc, type, [rest | policies])
+    {updated_policies, g_acc}
+  end
+
+  defp add_grouping_rule(p_acc, g_acc, type, rest) do
+    grouping_policies = Map.get(g_acc, type, [])
+    updated_grouping = Map.put(g_acc, type, [rest | grouping_policies])
+    {p_acc, updated_grouping}
+  end
+
+  defp add_custom_rule(p_acc, g_acc, ptype, rest) do
+    if String.starts_with?(ptype, "g") do
+      add_grouping_rule(p_acc, g_acc, ptype, rest)
+    else
+      add_policy_rule(p_acc, g_acc, ptype, rest)
+    end
   end
 
   defp format_policies(policies, grouping_policies) do

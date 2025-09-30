@@ -244,51 +244,46 @@ defmodule CasbinEx2.SyncedEnforcer do
   end
 
   defp categorize_read_operation(call) do
-    case call do
-      {:enforce, request} ->
-        {:enforce_type, {:enforce, request}}
+    operation_type = extract_operation_name(call)
 
-      {:batch_enforce, requests} ->
-        {:enforce_type, {:batch_enforce, requests}}
+    cond do
+      operation_type in [:enforce, :batch_enforce] ->
+        {:enforce_type, call}
 
-      {:get_policy} ->
-        {:policy_type, {:get_policy}}
+      operation_type in [:get_policy, :get_filtered_policy, :has_policy, :get_grouping_policy] ->
+        {:policy_type, call}
 
-      {:get_filtered_policy, field_index, field_values} ->
-        {:policy_type, {:get_filtered_policy, field_index, field_values}}
+      operation_type in [
+        :get_roles_for_user,
+        :get_users_for_role,
+        :has_role_for_user,
+        :get_permissions_for_user
+      ] ->
+        {:role_type, call}
 
-      {:has_policy, params} ->
-        {:policy_type, {:has_policy, params}}
-
-      {:get_grouping_policy} ->
-        {:policy_type, {:get_grouping_policy}}
-
-      {:get_roles_for_user, user, domain} ->
-        {:role_type, {:get_roles_for_user, user, domain}}
-
-      {:get_users_for_role, role, domain} ->
-        {:role_type, {:get_users_for_role, role, domain}}
-
-      {:has_role_for_user, user, role, domain} ->
-        {:role_type, {:has_role_for_user, user, role, domain}}
-
-      {:get_permissions_for_user, user, domain} ->
-        {:role_type, {:get_permissions_for_user, user, domain}}
-
-      _ ->
+      true ->
         :unknown
     end
   end
 
-  defp handle_enforce_type_operation(state, operation_data) do
-    case operation_data do
+  defp extract_operation_name(call) do
+    case call do
+      {operation, _} -> operation
+      {operation, _, _} -> operation
+      {operation, _, _, _} -> operation
+      _ -> :unknown
+    end
+  end
+
+  defp handle_enforce_type_operation(state, call) do
+    case call do
       {:enforce, request} -> handle_enforce_operation(state, request)
       {:batch_enforce, requests} -> handle_batch_enforce_operation(state, requests)
     end
   end
 
-  defp handle_policy_type_operation(state, operation_data) do
-    case operation_data do
+  defp handle_policy_type_operation(state, call) do
+    case call do
       {:get_policy} ->
         handle_simple_read_operation(state, &get_policy_data/1)
 
@@ -303,8 +298,8 @@ defmodule CasbinEx2.SyncedEnforcer do
     end
   end
 
-  defp handle_role_type_operation(state, operation_data) do
-    case operation_data do
+  defp handle_role_type_operation(state, call) do
+    case call do
       {:get_roles_for_user, user, domain} ->
         handle_role_operation(state, :get_roles, user, domain)
 
@@ -371,33 +366,55 @@ defmodule CasbinEx2.SyncedEnforcer do
   defp get_grouping_policy_data(enforcer), do: Map.get(enforcer.grouping_policies, "g", [])
 
   defp handle_write_operation(call, _from, state) do
+    case categorize_write_operation(call) do
+      {:policy_type, operation_data} -> handle_write_policy_operation(state, operation_data)
+      {:grouping_type, operation_data} -> handle_write_grouping_operation(state, operation_data)
+      {:enforcer_type, operation_data} -> handle_write_enforcer_operation(state, operation_data)
+      :unknown -> {:reply, {:error, :unknown_write_operation}, state}
+    end
+  end
+
+  defp categorize_write_operation(call) do
+    operation_name = extract_operation_name(call)
+
+    cond do
+      operation_name in [:add_policy, :add_policies, :remove_policy] ->
+        {:policy_type, call}
+
+      operation_name in [:add_grouping_policy, :remove_grouping_policy] ->
+        {:grouping_type, call}
+
+      operation_name in [:load_policy, :save_policy, :build_role_links] ->
+        {:enforcer_type, call}
+
+      true ->
+        :unknown
+    end
+  end
+
+  defp handle_write_policy_operation(state, call) do
     case call do
-      {:add_policy, params} ->
-        handle_policy_operation(state, :add_policy, params)
+      {:add_policy, params} -> handle_policy_operation(state, :add_policy, params)
+      {:add_policies, rules} -> handle_policy_batch_operation(state, :add_policies, rules)
+      {:remove_policy, params} -> handle_policy_operation(state, :remove_policy, params)
+    end
+  end
 
-      {:add_policies, rules} ->
-        handle_policy_batch_operation(state, :add_policies, rules)
-
-      {:remove_policy, params} ->
-        handle_policy_operation(state, :remove_policy, params)
-
+  defp handle_write_grouping_operation(state, call) do
+    case call do
       {:add_grouping_policy, params} ->
         handle_grouping_policy_operation(state, :add_grouping_policy, params)
 
       {:remove_grouping_policy, params} ->
         handle_grouping_policy_operation(state, :remove_grouping_policy, params)
+    end
+  end
 
-      {:load_policy} ->
-        handle_enforcer_operation(state, &Enforcer.load_policy/1, :ok)
-
-      {:save_policy} ->
-        handle_enforcer_operation(state, &Enforcer.save_policy/1, :ok, false)
-
-      {:build_role_links} ->
-        handle_enforcer_operation(state, &Enforcer.build_role_links/1, :ok)
-
-      _ ->
-        {:reply, {:error, :unknown_write_operation}, state}
+  defp handle_write_enforcer_operation(state, call) do
+    case call do
+      {:load_policy} -> handle_enforcer_operation(state, &Enforcer.load_policy/1, :ok)
+      {:save_policy} -> handle_enforcer_operation(state, &Enforcer.save_policy/1, :ok, false)
+      {:build_role_links} -> handle_enforcer_operation(state, &Enforcer.build_role_links/1, :ok)
     end
   end
 

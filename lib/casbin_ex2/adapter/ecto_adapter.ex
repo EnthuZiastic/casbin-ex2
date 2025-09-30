@@ -55,40 +55,42 @@ defmodule CasbinEx2.Adapter.EctoAdapter do
 
   @impl CasbinEx2.Adapter
   def save_policy(%__MODULE__{repo: repo}, policies, grouping_policies) do
-    # Start transaction
     repo.transaction(fn ->
-      # Clear existing policies
-      repo.delete_all(CasbinRule)
-
-      # Insert policy rules
-      policy_changesets =
-        policies
-        |> Enum.flat_map(fn {ptype, rules} ->
-          Enum.map(rules, fn rule ->
-            create_changeset(ptype, rule)
-          end)
-        end)
-
-      # Insert grouping policy rules
-      grouping_changesets =
-        grouping_policies
-        |> Enum.flat_map(fn {ptype, rules} ->
-          Enum.map(rules, fn rule ->
-            create_changeset(ptype, rule)
-          end)
-        end)
-
-      # Insert all rules
-      all_changesets = policy_changesets ++ grouping_changesets
-
-      Enum.each(all_changesets, fn changeset ->
-        repo.insert!(changeset)
-      end)
+      clear_and_insert_policies(repo, policies, grouping_policies)
     end)
 
     :ok
   rescue
     error -> {:error, "Failed to save policies: #{inspect(error)}"}
+  end
+
+  defp clear_and_insert_policies(repo, policies, grouping_policies) do
+    # Clear existing policies
+    repo.delete_all(CasbinRule)
+
+    # Insert all policy rules
+    all_changesets = create_policy_changesets(policies, grouping_policies)
+    insert_changesets(repo, all_changesets)
+  end
+
+  defp create_policy_changesets(policies, grouping_policies) do
+    policy_changesets = create_changesets_for_policies(policies)
+    grouping_changesets = create_changesets_for_policies(grouping_policies)
+    policy_changesets ++ grouping_changesets
+  end
+
+  defp create_changesets_for_policies(policies) do
+    Enum.flat_map(policies, fn {ptype, rules} ->
+      Enum.map(rules, fn rule ->
+        create_changeset(ptype, rule)
+      end)
+    end)
+  end
+
+  defp insert_changesets(repo, changesets) do
+    Enum.each(changesets, fn changeset ->
+      repo.insert!(changeset)
+    end)
   end
 
   @impl CasbinEx2.Adapter
@@ -192,24 +194,24 @@ defmodule CasbinEx2.Adapter.EctoAdapter do
 
   defp build_filtered_query(filter) do
     base_query = from(r in CasbinRule)
-
-    # Apply filter if provided
-    case filter do
-      nil ->
-        base_query
-
-      filter_map when is_map(filter_map) ->
-        Enum.reduce(filter_map, base_query, fn {key, value}, query ->
-          case key do
-            :ptype -> from(r in query, where: r.ptype == ^value)
-            _ -> query
-          end
-        end)
-
-      _ ->
-        base_query
-    end
+    apply_filter_to_query(base_query, filter)
   end
+
+  defp apply_filter_to_query(query, nil), do: query
+
+  defp apply_filter_to_query(query, filter_map) when is_map(filter_map) do
+    Enum.reduce(filter_map, query, fn {key, value}, acc_query ->
+      apply_filter_condition(acc_query, key, value)
+    end)
+  end
+
+  defp apply_filter_to_query(query, _), do: query
+
+  defp apply_filter_condition(query, :ptype, value) do
+    from(r in query, where: r.ptype == ^value)
+  end
+
+  defp apply_filter_condition(query, _key, _value), do: query
 
   defp categorize_rules(rules) do
     Enum.reduce(rules, {%{}, %{}}, fn rule, {policies, grouping_policies} ->

@@ -210,24 +210,39 @@ defmodule CasbinEx2.Enforcer do
     RoleManager.clear(role_manager)
 
     # Build role links from grouping policies
+    process_grouping_policies(role_manager, grouping_policies)
+
+    {:ok, enforcer}
+  end
+
+  defp process_grouping_policies(role_manager, grouping_policies) do
     grouping_policies
     |> Map.values()
     |> List.flatten()
     |> Enum.each(fn policy ->
-      case policy do
-        policy when is_list(policy) and length(policy) >= 2 ->
-          [user, role | domain] = policy
-          domain_value = if domain != [], do: hd(domain), else: ""
-          RoleManager.add_link(role_manager, user, role, domain_value)
-
-        _ ->
-          # Skip invalid policies
-          :ok
-      end
+      add_role_link_if_valid(role_manager, policy)
     end)
-
-    {:ok, enforcer}
   end
+
+  defp add_role_link_if_valid(role_manager, policy) do
+    case policy do
+      policy when is_list(policy) and length(policy) >= 2 ->
+        add_role_link_from_policy(role_manager, policy)
+
+      _ ->
+        # Skip invalid policies
+        :ok
+    end
+  end
+
+  defp add_role_link_from_policy(role_manager, policy) do
+    [user, role | domain] = policy
+    domain_value = extract_domain_value(domain)
+    RoleManager.add_link(role_manager, user, role, domain_value)
+  end
+
+  defp extract_domain_value([]), do: ""
+  defp extract_domain_value(domain), do: hd(domain)
 
   @doc """
   Enables or disables the enforcer.
@@ -403,18 +418,22 @@ defmodule CasbinEx2.Enforcer do
     current_rules = Map.get(policies, ptype, [])
 
     Enum.filter(current_rules, fn rule ->
-      field_values
-      |> Enum.with_index()
-      |> Enum.all?(fn {value, offset} ->
-        if value == "" do
-          true
-        else
-          rule_index = field_index + offset
-          rule_value = Enum.at(rule, rule_index)
-          rule_value == value
-        end
-      end)
+      rule_matches_filter?(rule, field_index, field_values)
     end)
+  end
+
+  defp rule_matches_filter?(rule, field_index, field_values) do
+    field_values
+    |> Enum.with_index()
+    |> Enum.all?(fn {value, offset} ->
+      field_value_matches?(rule, field_index + offset, value)
+    end)
+  end
+
+  defp field_value_matches?(_rule, _rule_index, ""), do: true
+
+  defp field_value_matches?(rule, rule_index, value) do
+    Enum.at(rule, rule_index) == value
   end
 
   @doc """
