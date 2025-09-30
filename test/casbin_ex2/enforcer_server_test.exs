@@ -1,6 +1,7 @@
 defmodule CasbinEx2.EnforcerServerTest do
   use ExUnit.Case
 
+  alias CasbinEx2.Adapter.FileAdapter
   alias CasbinEx2.EnforcerServer
   alias CasbinEx2.EnforcerSupervisor
 
@@ -58,7 +59,7 @@ defmodule CasbinEx2.EnforcerServerTest do
       File.write!(policy_path, "")
 
       # Start enforcer with proper adapter
-      adapter = CasbinEx2.Adapter.FileAdapter.new(policy_path)
+      adapter = FileAdapter.new(policy_path)
 
       assert {:ok, _pid} =
                EnforcerSupervisor.start_enforcer(enforcer_name, model_path, adapter: adapter)
@@ -97,7 +98,7 @@ defmodule CasbinEx2.EnforcerServerTest do
       File.write!(policy_path, "")
 
       # Start enforcer with proper adapter
-      adapter = CasbinEx2.Adapter.FileAdapter.new(policy_path)
+      adapter = FileAdapter.new(policy_path)
 
       assert {:ok, _pid} =
                EnforcerSupervisor.start_enforcer(enforcer_name, model_path, adapter: adapter)
@@ -136,7 +137,7 @@ defmodule CasbinEx2.EnforcerServerTest do
       File.write!(policy_path, "")
 
       # Start enforcer with proper adapter
-      adapter = CasbinEx2.Adapter.FileAdapter.new(policy_path)
+      adapter = FileAdapter.new(policy_path)
 
       assert {:ok, _pid} =
                EnforcerSupervisor.start_enforcer(enforcer_name, model_path, adapter: adapter)

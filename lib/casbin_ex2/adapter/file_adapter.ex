@@ -66,7 +66,7 @@ defmodule CasbinEx2.Adapter.FileAdapter do
   end
 
   @impl CasbinEx2.Adapter
-  def is_filtered(%__MODULE__{}) do
+  def filtered?(%__MODULE__{}) do
     false
   end
 

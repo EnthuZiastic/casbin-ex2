@@ -26,7 +26,7 @@ defmodule CasbinEx2.Adapter do
   @doc """
   Checks if the adapter supports filtered loading.
   """
-  @callback is_filtered(t()) :: boolean()
+  @callback filtered?(t()) :: boolean()
 
   @doc """
   Saves all policies to the storage.
@@ -77,9 +77,9 @@ defmodule CasbinEx2.Adapter do
   @doc """
   Checks if the adapter supports filtered loading.
   """
-  @spec is_filtered(t()) :: boolean()
-  def is_filtered(adapter) do
-    adapter.__struct__.is_filtered(adapter)
+  @spec filtered?(t()) :: boolean()
+  def filtered?(adapter) do
+    adapter.__struct__.filtered?(adapter)
   end
 
   @doc """

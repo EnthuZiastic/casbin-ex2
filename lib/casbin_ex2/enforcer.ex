@@ -7,9 +7,10 @@ defmodule CasbinEx2.Enforcer do
   """
 
   import Bitwise
+  alias CasbinEx2.Adapter
+  alias CasbinEx2.Adapter.FileAdapter
   alias CasbinEx2.Model
   alias CasbinEx2.RoleManager
-  alias CasbinEx2.Adapter
 
   defstruct [
     :model,
@@ -57,7 +58,7 @@ defmodule CasbinEx2.Enforcer do
   @spec new_enforcer(String.t(), Adapter.t()) :: {:ok, t()} | {:error, term()}
   def new_enforcer(model_path, policy_path)
       when is_binary(model_path) and is_binary(policy_path) do
-    adapter = CasbinEx2.Adapter.FileAdapter.new(policy_path)
+    adapter = FileAdapter.new(policy_path)
     init_with_file(model_path, adapter)
   end
 
@@ -1244,9 +1245,10 @@ defmodule CasbinEx2.Enforcer do
   # IP matching functions
   defp ip_match(ip1, ip2) do
     # Simple IP/CIDR matching
-    cond do
-      String.contains?(ip2, "/") -> ip_in_cidr?(ip1, ip2)
-      true -> ip1 == ip2
+    if String.contains?(ip2, "/") do
+      ip_in_cidr?(ip1, ip2)
+    else
+      ip1 == ip2
     end
   end
 

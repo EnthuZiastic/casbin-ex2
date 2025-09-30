@@ -8,6 +8,7 @@ defmodule CasbinEx2.CachedEnforcer do
 
   require Logger
 
+  alias CasbinEx2.Adapter.FileAdapter
   alias CasbinEx2.Enforcer
 
   defstruct [:enforcer, :cache, :cache_size, :enable_cache]
@@ -134,11 +135,11 @@ defmodule CasbinEx2.CachedEnforcer do
     new_state = %{state | enable_cache: enable}
 
     new_state =
-      if not enable do
+      if enable do
+        new_state
+      else
         # Clear cache when disabling
         %{new_state | cache: %{}}
-      else
-        new_state
       end
 
     Logger.info("Cache #{if enable, do: "enabled", else: "disabled"}")
@@ -200,7 +201,7 @@ defmodule CasbinEx2.CachedEnforcer do
 
   defp create_cached_enforcer(name, model_path, opts) do
     # Create the underlying enforcer
-    adapter = Keyword.get(opts, :adapter, CasbinEx2.Adapter.FileAdapter.new(""))
+    adapter = Keyword.get(opts, :adapter, FileAdapter.new(""))
 
     case Enforcer.init_with_file(model_path, adapter) do
       {:ok, enforcer} ->

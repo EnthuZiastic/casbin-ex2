@@ -8,6 +8,7 @@ defmodule CasbinEx2.SyncedEnforcer do
 
   require Logger
 
+  alias CasbinEx2.Adapter.FileAdapter
   alias CasbinEx2.Enforcer
 
   defstruct [:enforcer, :lock]
@@ -204,7 +205,7 @@ defmodule CasbinEx2.SyncedEnforcer do
 
   defp create_synced_enforcer(name, model_path, opts) do
     # Create the underlying enforcer
-    adapter = Keyword.get(opts, :adapter, CasbinEx2.Adapter.FileAdapter.new(""))
+    adapter = Keyword.get(opts, :adapter, FileAdapter.new(""))
 
     case Enforcer.init_with_file(model_path, adapter) do
       {:ok, enforcer} ->

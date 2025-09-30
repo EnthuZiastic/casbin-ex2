@@ -8,6 +8,7 @@ defmodule CasbinEx2.EnforcerServer do
 
   require Logger
 
+  alias CasbinEx2.Adapter.FileAdapter
   alias CasbinEx2.Enforcer
 
   #
@@ -667,7 +668,7 @@ defmodule CasbinEx2.EnforcerServer do
     case :ets.lookup(:casbin_enforcers_table, name) do
       [] ->
         # Create new enforcer
-        adapter = Keyword.get(opts, :adapter, CasbinEx2.Adapter.FileAdapter.new(""))
+        adapter = Keyword.get(opts, :adapter, FileAdapter.new(""))
 
         case Enforcer.init_with_file(model_path, adapter) do
           {:ok, enforcer} ->

@@ -27,8 +27,8 @@ defmodule CasbinEx2 do
 
   """
 
-  alias CasbinEx2.EnforcerSupervisor
   alias CasbinEx2.EnforcerServer
+  alias CasbinEx2.EnforcerSupervisor
 
   @doc """
   Starts a new enforcer process.
