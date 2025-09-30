@@ -106,7 +106,7 @@ defmodule CasbinEx2.CachedEnforcer do
           enable_cache: enable_cache
         }
 
-        Logger.info("Started cached enforcer server '#{name}' with cache size #{cache_size}")
+        # Logger.info("Started cached enforcer server '#{name}' with cache size #{cache_size}")
         {:ok, state}
 
       {:error, reason} ->
@@ -127,7 +127,6 @@ defmodule CasbinEx2.CachedEnforcer do
 
   def handle_call({:invalidate_cache}, _from, state) do
     new_state = %{state | cache: %{}}
-    Logger.debug("Cache invalidated")
     {:reply, :ok, new_state}
   end
 
@@ -142,7 +141,7 @@ defmodule CasbinEx2.CachedEnforcer do
         %{new_state | cache: %{}}
       end
 
-    Logger.info("Cache #{if enable, do: "enabled", else: "disabled"}")
+    # Logger.info("Cache #{if enable, do: "enabled", else: "disabled"}")
     {:reply, :ok, new_state}
   end
 
@@ -152,7 +151,7 @@ defmodule CasbinEx2.CachedEnforcer do
     # Trim cache if necessary
     new_state = trim_cache(new_state)
 
-    Logger.info("Cache size set to #{size}")
+    # Logger.info("Cache size set to #{size}")
     {:reply, :ok, new_state}
   end
 
@@ -226,12 +225,10 @@ defmodule CasbinEx2.CachedEnforcer do
         new_cache = Map.put(state.cache, cache_key, result)
         new_state = %{state | cache: new_cache} |> trim_cache()
 
-        Logger.debug("Cache miss for request: #{inspect(request)}")
         {:reply, result, new_state}
 
       cached_result ->
         # Cache hit
-        Logger.debug("Cache hit for request: #{inspect(request)}")
         {:reply, cached_result, state}
     end
   end

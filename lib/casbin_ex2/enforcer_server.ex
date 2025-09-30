@@ -567,11 +567,11 @@ defmodule CasbinEx2.EnforcerServer do
   def init({name, model_path, opts}) do
     case create_or_lookup_enforcer(name, model_path, opts) do
       {:ok, enforcer} ->
-        Logger.info("Started enforcer server '#{name}'")
+        # Logger.info("Started enforcer server '#{name}'")
         {:ok, enforcer}
 
       {:error, reason} ->
-        Logger.error("Failed to start enforcer server '#{name}': #{inspect(reason)}")
+        # Logger.error("Failed to start enforcer server '#{name}': #{inspect(reason)}")
         {:stop, reason}
     end
   end

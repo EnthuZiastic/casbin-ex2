@@ -9,8 +9,10 @@ defmodule CasbinEx2.Enforcer do
   import Bitwise
   alias CasbinEx2.Adapter
   alias CasbinEx2.Adapter.FileAdapter
+  alias CasbinEx2.Logger, as: CasbinLogger
   alias CasbinEx2.Model
   alias CasbinEx2.RoleManager
+  alias CasbinEx2.Transaction
 
   defstruct [
     :model,
@@ -146,7 +148,22 @@ defmodule CasbinEx2.Enforcer do
     matcher_expr = Model.get_matcher(model)
 
     # Evaluate the request against all policies
-    {result, _explain} = enforce_internal(enforcer, request, matcher_expr)
+    _start_time = System.monotonic_time(:microsecond)
+    {result, explain} = enforce_internal(enforcer, request, matcher_expr)
+    _end_time = System.monotonic_time(:microsecond)
+
+    # Log enforcement decision and performance
+    _explanation =
+      case explain do
+        nil -> "No explanation"
+        [] -> "No explanation"
+        [first | _] -> first
+        other -> to_string(other)
+      end
+
+    # CasbinLogger.log_enforcement(request, result, explanation)
+    # CasbinLogger.log_performance(:enforcement, end_time - start_time, %{request: request})
+
     result
   end
 
@@ -305,6 +322,73 @@ defmodule CasbinEx2.Enforcer do
     %{enforcer | auto_save: auto_save}
   end
 
+  # Transaction Support
+
+  @doc """
+  Creates a new transaction for atomic policy operations.
+
+  ## Examples
+
+      {:ok, transaction} = new_transaction(enforcer)
+
+  """
+  @spec new_transaction(t()) :: {:ok, Transaction.t()}
+  def new_transaction(enforcer) do
+    Transaction.new(enforcer)
+  end
+
+  @doc """
+  Commits a transaction, applying all operations atomically.
+
+  ## Examples
+
+      {:ok, updated_enforcer} = commit_transaction(transaction)
+
+  """
+  @spec commit_transaction(Transaction.t()) :: {:ok, t()} | {:error, term()}
+  def commit_transaction(transaction) do
+    case Transaction.commit(transaction) do
+      {:ok, updated_enforcer} ->
+        CasbinLogger.log_adapter_operation(
+          :transaction_commit,
+          :success,
+          Transaction.operation_count(transaction)
+        )
+
+        {:ok, updated_enforcer}
+
+      {:error, reason} = error ->
+        CasbinLogger.log_error(
+          :transaction_error,
+          "Transaction commit failed: #{inspect(reason)}",
+          %{transaction_id: Transaction.id(transaction)}
+        )
+
+        error
+    end
+  end
+
+  @doc """
+  Rolls back a transaction without applying operations.
+
+  ## Examples
+
+      {:ok, original_enforcer} = rollback_transaction(transaction)
+
+  """
+  @spec rollback_transaction(Transaction.t()) :: {:ok, t()}
+  def rollback_transaction(transaction) do
+    result = Transaction.rollback(transaction)
+
+    CasbinLogger.log_adapter_operation(
+      :transaction_rollback,
+      :success,
+      Transaction.operation_count(transaction)
+    )
+
+    result
+  end
+
   # Policy Management APIs
 
   @doc """
@@ -323,17 +407,16 @@ defmodule CasbinEx2.Enforcer do
     current_rules = Map.get(policies, ptype, [])
 
     if params in current_rules do
+      CasbinLogger.log_error(:policy_error, "Policy already exists: #{ptype} #{inspect(params)}")
       {:error, :already_exists}
     else
       new_rules = [params | current_rules]
       new_policies = Map.put(policies, ptype, new_rules)
       updated_enforcer = %{enforcer | policies: new_policies}
 
-      if enforcer.auto_save do
-        save_policy(updated_enforcer)
-      else
-        {:ok, updated_enforcer}
-      end
+      CasbinLogger.log_policy_change(:add, ptype, params)
+
+      maybe_save_policy(updated_enforcer, enforcer.auto_save)
     end
   end
 
@@ -1961,4 +2044,18 @@ defmodule CasbinEx2.Enforcer do
 
   defp matches_permission?([_user | perm], permission), do: perm == permission
   defp matches_permission?(_, _), do: false
+
+  defp maybe_save_policy(enforcer, true) do
+    case save_policy(enforcer) do
+      {:ok, saved_enforcer} ->
+        CasbinLogger.log_adapter_operation(:save_policy, :success, 1)
+        {:ok, saved_enforcer}
+
+      {:error, reason} = error ->
+        CasbinLogger.log_error(:save_error, "Failed to save policy: #{inspect(reason)}")
+        error
+    end
+  end
+
+  defp maybe_save_policy(enforcer, false), do: {:ok, enforcer}
 end

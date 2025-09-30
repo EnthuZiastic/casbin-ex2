@@ -416,7 +416,7 @@ defmodule CasbinEx2.EnforcerServerTest do
 
       start_time = System.monotonic_time(:millisecond)
       small_results = EnforcerServer.batch_enforce(enforcer_name, small_requests)
-      small_duration = System.monotonic_time(:millisecond) - start_time
+      _small_duration = System.monotonic_time(:millisecond) - start_time
 
       assert length(small_results) == 5
       assert Enum.all?(small_results, &(&1 == true))
@@ -426,15 +426,15 @@ defmodule CasbinEx2.EnforcerServerTest do
 
       start_time = System.monotonic_time(:millisecond)
       large_results = EnforcerServer.batch_enforce(enforcer_name, large_requests)
-      large_duration = System.monotonic_time(:millisecond) - start_time
+      _large_duration = System.monotonic_time(:millisecond) - start_time
 
       assert length(large_results) == 15
       assert Enum.all?(large_results, &(&1 == true))
 
       # Concurrent execution should be faster for large batches
       # (This is a rough heuristic - in practice, overhead might make small batches faster)
-      IO.puts("Small batch (#{length(small_requests)} requests): #{small_duration}ms")
-      IO.puts("Large batch (#{length(large_requests)} requests): #{large_duration}ms")
+      # IO.puts("Small batch (#{length(small_requests)} requests): #{small_duration}ms")
+      # IO.puts("Large batch (#{length(large_requests)} requests): #{large_duration}ms")
 
       # Test batch_enforce_ex with explanations
       ex_results = EnforcerServer.batch_enforce_ex(enforcer_name, large_requests)

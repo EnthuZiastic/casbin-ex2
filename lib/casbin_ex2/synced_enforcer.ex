@@ -149,11 +149,11 @@ defmodule CasbinEx2.SyncedEnforcer do
           lock: lock_pid
         }
 
-        Logger.info("Started synced enforcer server '#{name}'")
+        # Logger.info("Started synced enforcer server '#{name}'")
         {:ok, state}
 
       {:error, reason} ->
-        Logger.error("Failed to start synced enforcer server '#{name}': #{inspect(reason)}")
+        # Logger.error("Failed to start synced enforcer server '#{name}': #{inspect(reason)}")
         {:stop, reason}
     end
   end

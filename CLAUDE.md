@@ -1,2 +1,4 @@
-- Make sure to have similarly named functions in Elixir when taking reference from the Golang reference project in ../casbin
 - This project is an Elixir version of ../casbin written in Golang
+- Make sure to have similarly named functions in Elixir when taking reference from the Golang reference project in ../casbin
+- After your coding session always run mix format to format the code correctly and then mix credo --strict to fix any issues pointed out by credo linter
+- After your coding session always always run mix test to check for any failing tests and then fix

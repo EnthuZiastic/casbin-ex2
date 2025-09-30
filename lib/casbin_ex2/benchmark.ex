@@ -18,7 +18,7 @@ defmodule CasbinEx2.Benchmark do
   Runs comprehensive benchmarks comparing different enforcement strategies.
   """
   def run_comprehensive_benchmarks(opts \\ []) do
-    Logger.info("Starting CasbinEx2 comprehensive benchmarks...")
+    # Logger.info("Starting CasbinEx2 comprehensive benchmarks...")
 
     results = %{
       enforcement_comparison: benchmark_enforcement_comparison(opts),
@@ -83,7 +83,7 @@ defmodule CasbinEx2.Benchmark do
     batch_sizes = Keyword.get(opts, :batch_sizes, [1, 10, 50, 100, 500])
     policy_count = Keyword.get(opts, :policy_count, 100)
 
-    Logger.info("Benchmarking batch processing with sizes: #{inspect(batch_sizes)}")
+    # Logger.info("Benchmarking batch processing with sizes: #{inspect(batch_sizes)}")
 
     enforcer = setup_basic_enforcer(policy_count)
 
@@ -100,7 +100,7 @@ defmodule CasbinEx2.Benchmark do
     request_patterns = Keyword.get(opts, :request_patterns, [:random, :repeated, :sequential])
     iterations = Keyword.get(opts, :iterations, 1000)
 
-    Logger.info("Benchmarking cache performance with sizes: #{inspect(cache_sizes)}")
+    # Logger.info("Benchmarking cache performance with sizes: #{inspect(cache_sizes)}")
 
     results =
       Enum.map(cache_sizes, &benchmark_single_cache_size(&1, request_patterns, iterations))
@@ -115,7 +115,7 @@ defmodule CasbinEx2.Benchmark do
     policy_counts = Keyword.get(opts, :policy_counts, [10, 50, 100, 500, 1000])
     iterations = Keyword.get(opts, :iterations, 100)
 
-    Logger.info("Benchmarking scalability with policy counts: #{inspect(policy_counts)}")
+    # Logger.info("Benchmarking scalability with policy counts: #{inspect(policy_counts)}")
 
     results = Enum.map(policy_counts, &benchmark_single_policy_count(&1, iterations))
 
@@ -129,7 +129,7 @@ defmodule CasbinEx2.Benchmark do
     iterations = Keyword.get(opts, :iterations, 1000)
     policy_count = Keyword.get(opts, :policy_count, 100)
 
-    Logger.info("Benchmarking EnforcerServer vs direct Enforcer calls")
+    # Logger.info("Benchmarking EnforcerServer vs direct Enforcer calls")
 
     # Setup direct enforcer
     enforcer = setup_basic_enforcer(policy_count)
@@ -400,36 +400,16 @@ defmodule CasbinEx2.Benchmark do
     end
   end
 
-  defp print_benchmark_summary(results) do
-    Logger.info("=== CasbinEx2 Benchmark Results ===")
+  defp print_benchmark_summary(_results) do
+    # Benchmark results logging disabled for cleaner test output
+    # Enable by uncommenting the lines below when needed for debugging
 
-    # Enforcement comparison
-    enforcement = results.enforcement_comparison
-    Logger.info("Enforcement Comparison (#{enforcement.iterations} iterations):")
-    Logger.info("  Standard: #{Float.round(enforcement.standard_time_ms, 2)}ms")
-    Logger.info("  Cached: #{Float.round(enforcement.cached_time_ms, 2)}ms")
-    Logger.info("  Speedup: #{Float.round(enforcement.speedup_factor, 2)}x")
-
-    # Cache performance
-    cache_perf = results.cache_performance
-    Logger.info("Cache Performance:")
-
-    Enum.each(cache_perf.results, fn %{cache_size: size, patterns: patterns} ->
-      Logger.info("  Cache size #{size}:")
-
-      Enum.each(patterns, fn %{pattern: pattern, execution_time_ms: time} ->
-        Logger.info("    #{pattern}: #{Float.round(time, 2)}ms")
-      end)
-    end)
-
-    # Scalability
-    scalability = results.scalability
-    Logger.info("Scalability (#{scalability.iterations} iterations each):")
-
-    Enum.each(scalability.results, fn %{policy_count: count, speedup_factor: speedup} ->
-      Logger.info("  #{count} policies: #{Float.round(speedup, 2)}x speedup")
-    end)
-
-    Logger.info("=== End Benchmark Results ===")
+    # Logger.info("=== CasbinEx2 Benchmark Results ===")
+    # enforcement = results.enforcement_comparison
+    # Logger.info("Enforcement Comparison (#{enforcement.iterations} iterations):")
+    # Logger.info("  Standard: #{Float.round(enforcement.standard_time_ms, 2)}ms")
+    # Logger.info("  Cached: #{Float.round(enforcement.cached_time_ms, 2)}ms")
+    # Logger.info("  Speedup: #{Float.round(enforcement.speedup_factor, 2)}x")
+    # Logger.info("=== End Benchmark Results ===")
   end
 end
