@@ -12,8 +12,13 @@ CasbinEx2 is a powerful authorization library for Elixir, providing a comprehens
 - **Database Persistence**: Ecto SQL adapter for database-backed policy storage
 - **High Performance**: Cached enforcer for improved performance
 - **Thread Safety**: Synchronized enforcer for concurrent access
+- **Distributed Enforcement**: Multi-node policy synchronization with watchers
 - **Dynamic Management**: Runtime policy and role management
 - **Flexible Adapters**: File and database adapters included
+- **Batch Operations**: Batch enforcement and policy management
+- **Comprehensive API**: Full RBAC API with domain support
+- **Policy Explanations**: Enforcement with detailed explanations
+- **Custom Matchers**: Support for custom authorization logic
 
 ## Installation
 
@@ -122,6 +127,23 @@ For thread-safe operations in concurrent environments:
 CasbinEx2.SyncedEnforcer.enforce(:synced_enforcer, ["alice", "data1", "read"])
 ```
 
+### Distributed Enforcer
+
+For multi-node deployments with automatic policy synchronization:
+
+```elixir
+# Start distributed enforcer
+{:ok, _pid} = CasbinEx2.DistributedEnforcer.start_link(
+  :distributed_enforcer,
+  "path/to/model.conf",
+  nodes: [node()],
+  sync_interval: 5000
+)
+
+# Policies are automatically synchronized across nodes
+CasbinEx2.DistributedEnforcer.add_policy(:distributed_enforcer, ["alice", "data1", "read"])
+```
+
 ### Database Integration
 
 #### 1. Create Migration
@@ -175,6 +197,10 @@ CasbinEx2.add_policy(:db_enforcer, ["alice", "data1", "read"])
 CasbinEx2.add_policy(enforcer, ["user", "resource", "action"])
 CasbinEx2.remove_policy(enforcer, ["user", "resource", "action"])
 
+# Update policies
+CasbinEx2.update_policy(enforcer, ["alice", "data1", "read"], ["alice", "data1", "write"])
+CasbinEx2.update_policies(enforcer, old_policies, new_policies)
+
 # Batch operations
 CasbinEx2.add_policies(enforcer, [
   ["alice", "data1", "read"],
@@ -184,6 +210,13 @@ CasbinEx2.add_policies(enforcer, [
 # Query policies
 CasbinEx2.get_policy(enforcer)
 CasbinEx2.has_policy(enforcer, ["alice", "data1", "read"])
+
+# Get all entities
+CasbinEx2.get_all_subjects(enforcer)
+CasbinEx2.get_all_objects(enforcer)
+CasbinEx2.get_all_actions(enforcer)
+CasbinEx2.get_all_roles(enforcer)
+CasbinEx2.get_all_domains(enforcer)
 ```
 
 ### Role Management
@@ -193,10 +226,70 @@ CasbinEx2.has_policy(enforcer, ["alice", "data1", "read"])
 CasbinEx2.add_role_for_user(enforcer, "alice", "admin")
 CasbinEx2.delete_role_for_user(enforcer, "alice", "admin")
 
+# Domain-specific roles
+CasbinEx2.add_role_for_user_in_domain(enforcer, "alice", "admin", "domain1")
+CasbinEx2.delete_role_for_user_in_domain(enforcer, "alice", "admin", "domain1")
+
+# Batch role operations
+CasbinEx2.add_roles_for_user(enforcer, "alice", ["admin", "moderator"])
+
 # Query roles
 CasbinEx2.get_roles_for_user(enforcer, "alice")
 CasbinEx2.get_users_for_role(enforcer, "admin")
 CasbinEx2.has_role_for_user(enforcer, "alice", "admin")
+
+# Implicit roles (includes inherited roles)
+CasbinEx2.get_implicit_roles_for_user(enforcer, "alice")
+
+# Complete user/role cleanup
+CasbinEx2.delete_user(enforcer, "alice")  # Removes user from all policies
+CasbinEx2.delete_role(enforcer, "admin")  # Removes role from all policies
+```
+
+### Permission Management
+
+```elixir
+# Add/remove permissions for users
+CasbinEx2.add_permission_for_user(enforcer, "alice", ["data1", "read"])
+CasbinEx2.delete_permission_for_user(enforcer, "alice", ["data1", "read"])
+
+# Batch permission operations
+CasbinEx2.add_permissions_for_user(enforcer, "alice", [
+  ["data1", "read"],
+  ["data2", "write"]
+])
+
+# Query permissions
+CasbinEx2.get_permissions_for_user(enforcer, "alice")
+CasbinEx2.get_implicit_permissions_for_user(enforcer, "alice")  # Includes role permissions
+CasbinEx2.has_permission_for_user(enforcer, "alice", ["data1", "read"])
+
+# Find users with specific permissions
+CasbinEx2.get_users_for_permission(enforcer, ["data1", "read"])
+```
+
+### Advanced Enforcement
+
+```elixir
+# Basic enforcement
+CasbinEx2.enforce(enforcer, ["alice", "data1", "read"])
+
+# Enforcement with explanations
+{allowed, explanations} = CasbinEx2.enforce_ex(enforcer, ["alice", "data1", "read"])
+
+# Custom matcher enforcement
+CasbinEx2.enforce_with_matcher(enforcer, custom_matcher, ["alice", "data1", "read"])
+CasbinEx2.enforce_ex_with_matcher(enforcer, custom_matcher, ["alice", "data1", "read"])
+
+# Batch enforcement for multiple requests
+results = CasbinEx2.batch_enforce(enforcer, [
+  ["alice", "data1", "read"],
+  ["bob", "data2", "write"],
+  ["charlie", "data3", "delete"]
+])
+
+# Batch enforcement with explanations
+results_ex = CasbinEx2.batch_enforce_ex(enforcer, requests)
 ```
 
 ### Policy Persistence
@@ -265,12 +358,39 @@ e = some(where (p.eft == allow))
 m = g(r.sub, p.sub, r.dom) && r.dom == p.dom && r.obj == p.obj && r.act == p.act
 ```
 
+## Performance Benchmarking
+
+CasbinEx2 includes built-in benchmarking tools to compare different enforcement strategies:
+
+```elixir
+# Run comprehensive benchmarks
+CasbinEx2.Benchmark.run_comprehensive_benchmarks()
+
+# Compare different enforcement methods
+CasbinEx2.Benchmark.benchmark_enforcement_comparison()
+
+# Test batch processing performance
+CasbinEx2.Benchmark.benchmark_batch_processing()
+
+# Evaluate cache performance gains
+CasbinEx2.Benchmark.benchmark_cache_performance()
+
+# Test scalability with large policy sets
+CasbinEx2.Benchmark.benchmark_scalability()
+```
+
 ## Testing
 
 Run the test suite:
 
 ```bash
 mix test
+```
+
+Run benchmarks:
+
+```bash
+mix run -e "CasbinEx2.Benchmark.run_comprehensive_benchmarks()"
 ```
 
 ## License
