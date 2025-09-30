@@ -6,9 +6,9 @@ defmodule CasbinEx2.RoleManager do
   defstruct [:max_hierarchy_level, :roles]
 
   @type t :: %__MODULE__{
-    max_hierarchy_level: integer(),
-    roles: map()
-  }
+          max_hierarchy_level: integer(),
+          roles: map()
+        }
 
   @doc """
   Creates a new role manager with the specified max hierarchy level.
@@ -51,11 +51,12 @@ defmodule CasbinEx2.RoleManager do
     current_roles = Map.get(roles, key, MapSet.new())
     updated_roles = MapSet.delete(current_roles, build_key(role2, domain))
 
-    updated_map = if MapSet.size(updated_roles) == 0 do
-      Map.delete(roles, key)
-    else
-      Map.put(roles, key, updated_roles)
-    end
+    updated_map =
+      if MapSet.size(updated_roles) == 0 do
+        Map.delete(roles, key)
+      else
+        Map.put(roles, key, updated_roles)
+      end
 
     %{role_manager | roles: updated_map}
   end
@@ -80,7 +81,9 @@ defmodule CasbinEx2.RoleManager do
     key = build_key(name, domain)
 
     case Map.get(roles, key) do
-      nil -> []
+      nil ->
+        []
+
       role_set ->
         role_set
         |> MapSet.to_list()
@@ -116,7 +119,13 @@ defmodule CasbinEx2.RoleManager do
 
   # Private functions
 
-  defp has_link_helper(%__MODULE__{max_hierarchy_level: max_level, roles: roles}, role1, role2, domain, level) do
+  defp has_link_helper(
+         %__MODULE__{max_hierarchy_level: max_level, roles: roles},
+         role1,
+         role2,
+         domain,
+         level
+       ) do
     if level >= max_level do
       false
     else
@@ -124,7 +133,9 @@ defmodule CasbinEx2.RoleManager do
       target_key = build_key(role2, domain)
 
       case Map.get(roles, key) do
-        nil -> false
+        nil ->
+          false
+
         role_set ->
           if MapSet.member?(role_set, target_key) do
             true
@@ -134,8 +145,14 @@ defmodule CasbinEx2.RoleManager do
             |> MapSet.to_list()
             |> Enum.any?(fn inherited_role_key ->
               inherited_role = extract_role_from_key(inherited_role_key)
-              has_link_helper(%__MODULE__{max_hierarchy_level: max_level, roles: roles},
-                            inherited_role, role2, domain, level + 1)
+
+              has_link_helper(
+                %__MODULE__{max_hierarchy_level: max_level, roles: roles},
+                inherited_role,
+                role2,
+                domain,
+                level + 1
+              )
             end)
           end
       end

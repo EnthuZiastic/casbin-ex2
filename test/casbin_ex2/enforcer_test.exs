@@ -137,9 +137,10 @@ defmodule CasbinEx2.EnforcerTest do
       enforcer = create_test_enforcer_with_file_adapter(policy_path)
 
       # Add some policies manually
-      enforcer = %{enforcer |
-        policies: %{"p" => [["alice", "data1", "read"], ["bob", "data2", "write"]]},
-        grouping_policies: %{"g" => [["alice", "admin"]]}
+      enforcer = %{
+        enforcer
+        | policies: %{"p" => [["alice", "data1", "read"], ["bob", "data2", "write"]]},
+          grouping_policies: %{"g" => [["alice", "admin"]]}
       }
 
       assert {:ok, _enforcer} = Enforcer.save_policy(enforcer)

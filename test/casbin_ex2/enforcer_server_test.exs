@@ -59,7 +59,9 @@ defmodule CasbinEx2.EnforcerServerTest do
 
       # Start enforcer with proper adapter
       adapter = CasbinEx2.Adapter.FileAdapter.new(policy_path)
-      assert {:ok, _pid} = EnforcerSupervisor.start_enforcer(enforcer_name, model_path, [adapter: adapter])
+
+      assert {:ok, _pid} =
+               EnforcerSupervisor.start_enforcer(enforcer_name, model_path, adapter: adapter)
 
       # Add a policy
       assert EnforcerServer.add_policy(enforcer_name, ["alice", "data1", "read"]) == true
@@ -96,7 +98,9 @@ defmodule CasbinEx2.EnforcerServerTest do
 
       # Start enforcer with proper adapter
       adapter = CasbinEx2.Adapter.FileAdapter.new(policy_path)
-      assert {:ok, _pid} = EnforcerSupervisor.start_enforcer(enforcer_name, model_path, [adapter: adapter])
+
+      assert {:ok, _pid} =
+               EnforcerSupervisor.start_enforcer(enforcer_name, model_path, adapter: adapter)
 
       # Add role for user
       assert EnforcerServer.add_role_for_user(enforcer_name, "alice", "admin") == true
@@ -133,7 +137,9 @@ defmodule CasbinEx2.EnforcerServerTest do
 
       # Start enforcer with proper adapter
       adapter = CasbinEx2.Adapter.FileAdapter.new(policy_path)
-      assert {:ok, _pid} = EnforcerSupervisor.start_enforcer(enforcer_name, model_path, [adapter: adapter])
+
+      assert {:ok, _pid} =
+               EnforcerSupervisor.start_enforcer(enforcer_name, model_path, adapter: adapter)
 
       # Add multiple policies
       policies = [

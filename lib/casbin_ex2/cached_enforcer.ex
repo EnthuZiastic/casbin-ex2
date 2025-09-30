@@ -13,11 +13,11 @@ defmodule CasbinEx2.CachedEnforcer do
   defstruct [:enforcer, :cache, :cache_size, :enable_cache]
 
   @type t :: %__MODULE__{
-    enforcer: Enforcer.t(),
-    cache: map(),
-    cache_size: integer(),
-    enable_cache: boolean()
-  }
+          enforcer: Enforcer.t(),
+          cache: map(),
+          cache_size: integer(),
+          enable_cache: boolean()
+        }
 
   @default_cache_size 1000
 
@@ -74,8 +74,13 @@ defmodule CasbinEx2.CachedEnforcer do
   # Delegate other calls to the underlying enforcer
   def add_policy(name, params), do: call_and_invalidate(name, {:add_policy, params})
   def remove_policy(name, params), do: call_and_invalidate(name, {:remove_policy, params})
-  def add_grouping_policy(name, params), do: call_and_invalidate(name, {:add_grouping_policy, params})
-  def remove_grouping_policy(name, params), do: call_and_invalidate(name, {:remove_grouping_policy, params})
+
+  def add_grouping_policy(name, params),
+    do: call_and_invalidate(name, {:add_grouping_policy, params})
+
+  def remove_grouping_policy(name, params),
+    do: call_and_invalidate(name, {:remove_grouping_policy, params})
+
   def load_policy(name), do: call_and_invalidate(name, {:load_policy})
 
   def get_policy(name), do: GenServer.call(via_tuple(name), {:get_policy})
@@ -128,12 +133,13 @@ defmodule CasbinEx2.CachedEnforcer do
   def handle_call({:enable_cache, enable}, _from, state) do
     new_state = %{state | enable_cache: enable}
 
-    new_state = if not enable do
-      # Clear cache when disabling
-      %{new_state | cache: %{}}
-    else
-      new_state
-    end
+    new_state =
+      if not enable do
+        # Clear cache when disabling
+        %{new_state | cache: %{}}
+      else
+        new_state
+      end
 
     Logger.info("Cache #{if enable, do: "enabled", else: "disabled"}")
     {:reply, :ok, new_state}
@@ -160,7 +166,14 @@ defmodule CasbinEx2.CachedEnforcer do
   end
 
   # Policy modification calls that invalidate cache
-  def handle_call(call, from, state) when elem(call, 0) in [:add_policy, :remove_policy, :add_grouping_policy, :remove_grouping_policy, :load_policy] do
+  def handle_call(call, from, state)
+      when elem(call, 0) in [
+             :add_policy,
+             :remove_policy,
+             :add_grouping_policy,
+             :remove_grouping_policy,
+             :load_policy
+           ] do
     # Delegate to enforcer server and invalidate cache
     result = delegate_to_enforcer_server(call, from, state.enforcer)
     new_state = %{state | cache: %{}}

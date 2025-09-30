@@ -15,7 +15,8 @@ defmodule CasbinEx2.Effect do
   @doc """
   Evaluates the policy effect based on the effect expression and matched policies.
   """
-  @spec evaluate_effect(String.t(), [%{effect: String.t(), decision: boolean()}]) :: effect_result()
+  @spec evaluate_effect(String.t(), [%{effect: String.t(), decision: boolean()}]) ::
+          effect_result()
   def evaluate_effect(effect_expr, policy_results) do
     case normalize_effect_expr(effect_expr) do
       "some(where (p.eft == allow))" ->
@@ -56,7 +57,8 @@ defmodule CasbinEx2.Effect do
     case Enum.at(policy, -1) do
       "allow" -> @effect_allow
       "deny" -> @effect_deny
-      _ -> @effect_allow  # Default to allow
+      # Default to allow
+      _ -> @effect_allow
     end
   end
 
@@ -87,18 +89,20 @@ defmodule CasbinEx2.Effect do
 
   # some(where (p.eft == allow)) - allows if any policy allows
   defp evaluate_some_allow(policy_results) do
-    has_allow = Enum.any?(policy_results, fn result ->
-      result.decision and result.effect == @effect_allow
-    end)
+    has_allow =
+      Enum.any?(policy_results, fn result ->
+        result.decision and result.effect == @effect_allow
+      end)
 
     if has_allow, do: :allow, else: :deny
   end
 
   # !some(where (p.eft == deny)) - denies if any policy denies
   defp evaluate_not_some_deny(policy_results) do
-    has_deny = Enum.any?(policy_results, fn result ->
-      result.decision and result.effect == @effect_deny
-    end)
+    has_deny =
+      Enum.any?(policy_results, fn result ->
+        result.decision and result.effect == @effect_deny
+      end)
 
     if has_deny, do: :deny, else: :allow
   end
@@ -106,13 +110,15 @@ defmodule CasbinEx2.Effect do
   # some(where (p.eft == allow)) && !some(where (p.eft == deny))
   # Allows only if there's an allow and no deny
   defp evaluate_allow_and_deny(policy_results) do
-    has_allow = Enum.any?(policy_results, fn result ->
-      result.decision and result.effect == @effect_allow
-    end)
+    has_allow =
+      Enum.any?(policy_results, fn result ->
+        result.decision and result.effect == @effect_allow
+      end)
 
-    has_deny = Enum.any?(policy_results, fn result ->
-      result.decision and result.effect == @effect_deny
-    end)
+    has_deny =
+      Enum.any?(policy_results, fn result ->
+        result.decision and result.effect == @effect_deny
+      end)
 
     cond do
       has_deny -> :deny
@@ -132,14 +138,15 @@ defmodule CasbinEx2.Effect do
 
       results ->
         # Sort by effect priority: deny > allow > indeterminate
-        sorted_results = Enum.sort_by(results, fn result ->
-          case result.effect do
-            @effect_deny -> 0
-            @effect_allow -> 1
-            @effect_indeterminate -> 2
-            _ -> 3
-          end
-        end)
+        sorted_results =
+          Enum.sort_by(results, fn result ->
+            case result.effect do
+              @effect_deny -> 0
+              @effect_allow -> 1
+              @effect_indeterminate -> 2
+              _ -> 3
+            end
+          end)
 
         case List.first(sorted_results) do
           %{effect: @effect_deny} -> :deny
@@ -160,7 +167,9 @@ defmodule CasbinEx2.Effect do
       evaluate_priority_or_deny(subject_results)
     end)
     |> case do
-      [] -> :deny
+      [] ->
+        :deny
+
       results ->
         # If any subject allows, allow; if any denies, deny
         cond do
@@ -174,7 +183,8 @@ defmodule CasbinEx2.Effect do
   @doc """
   Evaluates complex effect expressions with custom logic.
   """
-  @spec evaluate_custom_effect(String.t(), [%{effect: String.t(), decision: boolean()}]) :: effect_result()
+  @spec evaluate_custom_effect(String.t(), [%{effect: String.t(), decision: boolean()}]) ::
+          effect_result()
   def evaluate_custom_effect(expression, policy_results) do
     # Parse and evaluate custom effect expressions
     # This is a simplified implementation - in practice, you'd want a proper expression parser
@@ -190,7 +200,8 @@ defmodule CasbinEx2.Effect do
       String.contains?(expr, "!") and String.contains?(expr, "deny") ->
         evaluate_not_some_deny(policy_results)
 
-      String.contains?(expr, "allow") and String.contains?(expr, "&&") and String.contains?(expr, "!") and String.contains?(expr, "deny") ->
+      String.contains?(expr, "allow") and String.contains?(expr, "&&") and
+        String.contains?(expr, "!") and String.contains?(expr, "deny") ->
         evaluate_allow_and_deny(policy_results)
 
       true ->
@@ -201,7 +212,8 @@ defmodule CasbinEx2.Effect do
   @doc """
   Creates an effect evaluator function for a given expression.
   """
-  @spec create_evaluator(String.t()) :: (([%{effect: String.t(), decision: boolean()}]) -> effect_result())
+  @spec create_evaluator(String.t()) :: ([%{effect: String.t(), decision: boolean()}] ->
+                                           effect_result())
   def create_evaluator(effect_expr) do
     fn policy_results -> evaluate_effect(effect_expr, policy_results) end
   end

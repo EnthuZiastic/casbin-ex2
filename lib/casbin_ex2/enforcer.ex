@@ -27,19 +27,19 @@ defmodule CasbinEx2.Enforcer do
   ]
 
   @type t :: %__MODULE__{
-    model: Model.t() | nil,
-    adapter: Adapter.t() | nil,
-    watcher: any() | nil,
-    role_manager: RoleManager.t() | nil,
-    function_map: map(),
-    effect_expr: any() | nil,
-    enabled: boolean(),
-    auto_save: boolean(),
-    auto_build_role_links: boolean(),
-    auto_notify_watcher: boolean(),
-    policies: map(),
-    grouping_policies: map()
-  }
+          model: Model.t() | nil,
+          adapter: Adapter.t() | nil,
+          watcher: any() | nil,
+          role_manager: RoleManager.t() | nil,
+          function_map: map(),
+          effect_expr: any() | nil,
+          enabled: boolean(),
+          auto_save: boolean(),
+          auto_build_role_links: boolean(),
+          auto_notify_watcher: boolean(),
+          policies: map(),
+          grouping_policies: map()
+        }
 
   @doc """
   Creates a new enforcer.
@@ -55,7 +55,8 @@ defmodule CasbinEx2.Enforcer do
   """
   @spec new_enforcer(String.t(), String.t()) :: {:ok, t()} | {:error, term()}
   @spec new_enforcer(String.t(), Adapter.t()) :: {:ok, t()} | {:error, term()}
-  def new_enforcer(model_path, policy_path) when is_binary(model_path) and is_binary(policy_path) do
+  def new_enforcer(model_path, policy_path)
+      when is_binary(model_path) and is_binary(policy_path) do
     adapter = CasbinEx2.Adapter.FileAdapter.new(policy_path)
     init_with_file(model_path, adapter)
   end
@@ -106,10 +107,7 @@ defmodule CasbinEx2.Enforcer do
   def load_policy(%__MODULE__{adapter: adapter, model: model} = enforcer) do
     case Adapter.load_policy(adapter, model) do
       {:ok, policies, grouping_policies} ->
-        updated_enforcer = %{enforcer |
-          policies: policies,
-          grouping_policies: grouping_policies
-        }
+        updated_enforcer = %{enforcer | policies: policies, grouping_policies: grouping_policies}
 
         if enforcer.auto_build_role_links do
           build_role_links(updated_enforcer)
@@ -117,7 +115,8 @@ defmodule CasbinEx2.Enforcer do
           {:ok, updated_enforcer}
         end
 
-      {:error, reason} -> {:error, reason}
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
@@ -125,7 +124,10 @@ defmodule CasbinEx2.Enforcer do
   Saves policy to the adapter.
   """
   @spec save_policy(t()) :: {:ok, t()} | {:error, term()}
-  def save_policy(%__MODULE__{adapter: adapter, policies: policies, grouping_policies: grouping_policies} = enforcer) do
+  def save_policy(
+        %__MODULE__{adapter: adapter, policies: policies, grouping_policies: grouping_policies} =
+          enforcer
+      ) do
     case Adapter.save_policy(adapter, policies, grouping_policies) do
       :ok -> {:ok, enforcer}
       {:error, reason} -> {:error, reason}
@@ -173,7 +175,8 @@ defmodule CasbinEx2.Enforcer do
   Extended enforcement with custom matcher. Returns {allowed, explanation}.
   """
   @spec enforce_ex_with_matcher(t(), String.t(), list()) :: {boolean(), [String.t()]}
-  def enforce_ex_with_matcher(%__MODULE__{enabled: false}, _matcher, _request), do: {true, ["Enforcer disabled"]}
+  def enforce_ex_with_matcher(%__MODULE__{enabled: false}, _matcher, _request),
+    do: {true, ["Enforcer disabled"]}
 
   def enforce_ex_with_matcher(enforcer, matcher, request) do
     enforce_internal(enforcer, request, matcher)
@@ -199,7 +202,9 @@ defmodule CasbinEx2.Enforcer do
   Builds role inheritance links.
   """
   @spec build_role_links(t()) :: {:ok, t()} | {:error, term()}
-  def build_role_links(%__MODULE__{role_manager: role_manager, grouping_policies: grouping_policies} = enforcer) do
+  def build_role_links(
+        %__MODULE__{role_manager: role_manager, grouping_policies: grouping_policies} = enforcer
+      ) do
     # Clear existing role links
     RoleManager.clear(role_manager)
 
@@ -213,6 +218,7 @@ defmodule CasbinEx2.Enforcer do
           [user, role | domain] = policy
           domain_value = if domain != [], do: hd(domain), else: ""
           RoleManager.add_link(role_manager, user, role, domain_value)
+
         _ ->
           # Skip invalid policies
           :ok
@@ -285,13 +291,14 @@ defmodule CasbinEx2.Enforcer do
   def add_named_policies(%__MODULE__{policies: policies} = enforcer, ptype, rules) do
     current_rules = Map.get(policies, ptype, [])
 
-    new_rules = Enum.reduce(rules, current_rules, fn rule, acc ->
-      if rule in acc do
-        acc
-      else
-        [rule | acc]
-      end
-    end)
+    new_rules =
+      Enum.reduce(rules, current_rules, fn rule, acc ->
+        if rule in acc do
+          acc
+        else
+          [rule | acc]
+        end
+      end)
 
     new_policies = Map.put(policies, ptype, new_rules)
     updated_enforcer = %{enforcer | policies: new_policies}
@@ -348,9 +355,10 @@ defmodule CasbinEx2.Enforcer do
   def remove_named_policies(%__MODULE__{policies: policies} = enforcer, ptype, rules) do
     current_rules = Map.get(policies, ptype, [])
 
-    new_rules = Enum.reduce(rules, current_rules, fn rule, acc ->
-      List.delete(acc, rule)
-    end)
+    new_rules =
+      Enum.reduce(rules, current_rules, fn rule, acc ->
+        List.delete(acc, rule)
+      end)
 
     new_policies = Map.put(policies, ptype, new_rules)
     updated_enforcer = %{enforcer | policies: new_policies}
@@ -439,7 +447,11 @@ defmodule CasbinEx2.Enforcer do
   Adds a named grouping policy rule.
   """
   @spec add_named_grouping_policy(t(), String.t(), [String.t()]) :: {:ok, t()} | {:error, term()}
-  def add_named_grouping_policy(%__MODULE__{grouping_policies: grouping_policies, role_manager: role_manager} = enforcer, ptype, params) do
+  def add_named_grouping_policy(
+        %__MODULE__{grouping_policies: grouping_policies, role_manager: role_manager} = enforcer,
+        ptype,
+        params
+      ) do
     current_rules = Map.get(grouping_policies, ptype, [])
 
     if params in current_rules do
@@ -449,18 +461,22 @@ defmodule CasbinEx2.Enforcer do
       new_grouping_policies = Map.put(grouping_policies, ptype, new_rules)
 
       # Update role manager
-      new_role_manager = case params do
-        [user, role] ->
-          RoleManager.add_link(role_manager, user, role, "")
-        [user, role, domain] ->
-          RoleManager.add_link(role_manager, user, role, domain)
-        _ ->
-          role_manager
-      end
+      new_role_manager =
+        case params do
+          [user, role] ->
+            RoleManager.add_link(role_manager, user, role, "")
 
-      updated_enforcer = %{enforcer |
-        grouping_policies: new_grouping_policies,
-        role_manager: new_role_manager
+          [user, role, domain] ->
+            RoleManager.add_link(role_manager, user, role, domain)
+
+          _ ->
+            role_manager
+        end
+
+      updated_enforcer = %{
+        enforcer
+        | grouping_policies: new_grouping_policies,
+          role_manager: new_role_manager
       }
 
       if enforcer.auto_save do
@@ -500,14 +516,21 @@ defmodule CasbinEx2.Enforcer do
   @doc """
   Updates a named policy rule.
   """
-  @spec update_named_policy(t(), String.t(), [String.t()], [String.t()]) :: {:ok, t()} | {:error, term()}
-  def update_named_policy(%__MODULE__{policies: policies} = enforcer, ptype, old_policy, new_policy) do
+  @spec update_named_policy(t(), String.t(), [String.t()], [String.t()]) ::
+          {:ok, t()} | {:error, term()}
+  def update_named_policy(
+        %__MODULE__{policies: policies} = enforcer,
+        ptype,
+        old_policy,
+        new_policy
+      ) do
     current_rules = Map.get(policies, ptype, [])
 
     if old_policy in current_rules do
-      new_rules = current_rules
-      |> List.delete(old_policy)
-      |> then(fn rules -> [new_policy | rules] end)
+      new_rules =
+        current_rules
+        |> List.delete(old_policy)
+        |> then(fn rules -> [new_policy | rules] end)
 
       new_policies = Map.put(policies, ptype, new_rules)
       updated_enforcer = %{enforcer | policies: new_policies}
@@ -533,8 +556,14 @@ defmodule CasbinEx2.Enforcer do
   @doc """
   Updates multiple named policy rules.
   """
-  @spec update_named_policies(t(), String.t(), [[String.t()]], [[String.t()]]) :: {:ok, t()} | {:error, term()}
-  def update_named_policies(%__MODULE__{policies: policies} = enforcer, ptype, old_policies, new_policies) do
+  @spec update_named_policies(t(), String.t(), [[String.t()]], [[String.t()]]) ::
+          {:ok, t()} | {:error, term()}
+  def update_named_policies(
+        %__MODULE__{policies: policies} = enforcer,
+        ptype,
+        old_policies,
+        new_policies
+      ) do
     if length(old_policies) != length(new_policies) do
       {:error, :length_mismatch}
     else
@@ -542,17 +571,20 @@ defmodule CasbinEx2.Enforcer do
 
       # Check all old policies exist
       missing_policies = Enum.reject(old_policies, &(&1 in current_rules))
+
       if missing_policies != [] do
         {:error, {:not_found, missing_policies}}
       else
         # Remove old policies and add new ones
-        updated_rules = Enum.reduce(old_policies, current_rules, fn old_policy, acc ->
-          List.delete(acc, old_policy)
-        end)
+        updated_rules =
+          Enum.reduce(old_policies, current_rules, fn old_policy, acc ->
+            List.delete(acc, old_policy)
+          end)
 
-        final_rules = Enum.reduce(new_policies, updated_rules, fn new_policy, acc ->
-          [new_policy | acc]
-        end)
+        final_rules =
+          Enum.reduce(new_policies, updated_rules, fn new_policy, acc ->
+            [new_policy | acc]
+          end)
 
         new_policies_map = Map.put(policies, ptype, final_rules)
         updated_enforcer = %{enforcer | policies: new_policies_map}
@@ -569,7 +601,8 @@ defmodule CasbinEx2.Enforcer do
   @doc """
   Updates filtered policies for the default policy type "p".
   """
-  @spec update_filtered_policies(t(), [[String.t()]], integer(), [String.t()]) :: {:ok, t()} | {:error, term()}
+  @spec update_filtered_policies(t(), [[String.t()]], integer(), [String.t()]) ::
+          {:ok, t()} | {:error, term()}
   def update_filtered_policies(enforcer, new_policies, field_index, field_values) do
     update_filtered_named_policies(enforcer, "p", new_policies, field_index, field_values)
   end
@@ -577,29 +610,38 @@ defmodule CasbinEx2.Enforcer do
   @doc """
   Updates filtered named policies.
   """
-  @spec update_filtered_named_policies(t(), String.t(), [[String.t()]], integer(), [String.t()]) :: {:ok, t()} | {:error, term()}
-  def update_filtered_named_policies(%__MODULE__{policies: policies} = enforcer, ptype, new_policies, field_index, field_values) do
+  @spec update_filtered_named_policies(t(), String.t(), [[String.t()]], integer(), [String.t()]) ::
+          {:ok, t()} | {:error, term()}
+  def update_filtered_named_policies(
+        %__MODULE__{policies: policies} = enforcer,
+        ptype,
+        new_policies,
+        field_index,
+        field_values
+      ) do
     current_rules = Map.get(policies, ptype, [])
 
     # Remove policies that match the filter
-    filtered_rules = Enum.reject(current_rules, fn rule ->
-      field_values
-      |> Enum.with_index()
-      |> Enum.all?(fn {value, offset} ->
-        if value == "" do
-          true
-        else
-          rule_index = field_index + offset
-          rule_value = Enum.at(rule, rule_index)
-          rule_value == value
-        end
+    filtered_rules =
+      Enum.reject(current_rules, fn rule ->
+        field_values
+        |> Enum.with_index()
+        |> Enum.all?(fn {value, offset} ->
+          if value == "" do
+            true
+          else
+            rule_index = field_index + offset
+            rule_value = Enum.at(rule, rule_index)
+            rule_value == value
+          end
+        end)
       end)
-    end)
 
     # Add new policies
-    final_rules = Enum.reduce(new_policies, filtered_rules, fn new_policy, acc ->
-      [new_policy | acc]
-    end)
+    final_rules =
+      Enum.reduce(new_policies, filtered_rules, fn new_policy, acc ->
+        [new_policy | acc]
+      end)
 
     new_policies_map = Map.put(policies, ptype, final_rules)
     updated_enforcer = %{enforcer | policies: new_policies_map}
@@ -622,39 +664,53 @@ defmodule CasbinEx2.Enforcer do
   @doc """
   Updates a named grouping policy rule.
   """
-  @spec update_named_grouping_policy(t(), String.t(), [String.t()], [String.t()]) :: {:ok, t()} | {:error, term()}
-  def update_named_grouping_policy(%__MODULE__{grouping_policies: grouping_policies, role_manager: role_manager} = enforcer, ptype, old_rule, new_rule) do
+  @spec update_named_grouping_policy(t(), String.t(), [String.t()], [String.t()]) ::
+          {:ok, t()} | {:error, term()}
+  def update_named_grouping_policy(
+        %__MODULE__{grouping_policies: grouping_policies, role_manager: role_manager} = enforcer,
+        ptype,
+        old_rule,
+        new_rule
+      ) do
     current_rules = Map.get(grouping_policies, ptype, [])
 
     if old_rule in current_rules do
-      new_rules = current_rules
-      |> List.delete(old_rule)
-      |> then(fn rules -> [new_rule | rules] end)
+      new_rules =
+        current_rules
+        |> List.delete(old_rule)
+        |> then(fn rules -> [new_rule | rules] end)
 
       new_grouping_policies = Map.put(grouping_policies, ptype, new_rules)
 
       # Update role manager - remove old link and add new one
-      updated_role_manager = case old_rule do
-        [user, role] ->
-          RoleManager.delete_link(role_manager, user, role, "")
-        [user, role, domain] ->
-          RoleManager.delete_link(role_manager, user, role, domain)
-        _ ->
-          role_manager
-      end
+      updated_role_manager =
+        case old_rule do
+          [user, role] ->
+            RoleManager.delete_link(role_manager, user, role, "")
 
-      final_role_manager = case new_rule do
-        [user, role] ->
-          RoleManager.add_link(updated_role_manager, user, role, "")
-        [user, role, domain] ->
-          RoleManager.add_link(updated_role_manager, user, role, domain)
-        _ ->
-          updated_role_manager
-      end
+          [user, role, domain] ->
+            RoleManager.delete_link(role_manager, user, role, domain)
 
-      updated_enforcer = %{enforcer |
-        grouping_policies: new_grouping_policies,
-        role_manager: final_role_manager
+          _ ->
+            role_manager
+        end
+
+      final_role_manager =
+        case new_rule do
+          [user, role] ->
+            RoleManager.add_link(updated_role_manager, user, role, "")
+
+          [user, role, domain] ->
+            RoleManager.add_link(updated_role_manager, user, role, domain)
+
+          _ ->
+            updated_role_manager
+        end
+
+      updated_enforcer = %{
+        enforcer
+        | grouping_policies: new_grouping_policies,
+          role_manager: final_role_manager
       }
 
       if enforcer.auto_save do
@@ -754,17 +810,19 @@ defmodule CasbinEx2.Enforcer do
   """
   @spec get_all_domains(t()) :: [String.t()]
   def get_all_domains(%__MODULE__{policies: policies, grouping_policies: grouping_policies}) do
-    policy_domains = policies
-    |> Map.values()
-    |> List.flatten()
-    |> Enum.map(&Enum.at(&1, 3))
-    |> Enum.reject(&(&1 == nil or &1 == ""))
+    policy_domains =
+      policies
+      |> Map.values()
+      |> List.flatten()
+      |> Enum.map(&Enum.at(&1, 3))
+      |> Enum.reject(&(&1 == nil or &1 == ""))
 
-    grouping_domains = grouping_policies
-    |> Map.values()
-    |> List.flatten()
-    |> Enum.map(&Enum.at(&1, 2))
-    |> Enum.reject(&(&1 == nil or &1 == ""))
+    grouping_domains =
+      grouping_policies
+      |> Map.values()
+      |> List.flatten()
+      |> Enum.map(&Enum.at(&1, 2))
+      |> Enum.reject(&(&1 == nil or &1 == ""))
 
     (policy_domains ++ grouping_domains)
     |> Enum.uniq()
@@ -806,7 +864,11 @@ defmodule CasbinEx2.Enforcer do
   Gets users for a role in a specific domain.
   """
   @spec get_users_for_role_in_domain(t(), String.t(), String.t()) :: [String.t()]
-  def get_users_for_role_in_domain(%__MODULE__{grouping_policies: grouping_policies}, role, domain) do
+  def get_users_for_role_in_domain(
+        %__MODULE__{grouping_policies: grouping_policies},
+        role,
+        domain
+      ) do
     grouping_policies
     |> Map.get("g", [])
     |> Enum.filter(fn
@@ -820,7 +882,11 @@ defmodule CasbinEx2.Enforcer do
   Gets roles for a user in a specific domain.
   """
   @spec get_roles_for_user_in_domain(t(), String.t(), String.t()) :: [String.t()]
-  def get_roles_for_user_in_domain(%__MODULE__{grouping_policies: grouping_policies}, user, domain) do
+  def get_roles_for_user_in_domain(
+        %__MODULE__{grouping_policies: grouping_policies},
+        user,
+        domain
+      ) do
     grouping_policies
     |> Map.get("g", [])
     |> Enum.filter(fn
@@ -836,25 +902,27 @@ defmodule CasbinEx2.Enforcer do
   @spec get_permissions_for_user_in_domain(t(), String.t(), String.t()) :: [[String.t()]]
   def get_permissions_for_user_in_domain(%__MODULE__{policies: policies} = enforcer, user, domain) do
     # Get direct permissions
-    direct_permissions = policies
-    |> Map.get("p", [])
-    |> Enum.filter(fn
-      [^user, _obj, _act, ^domain] -> true
-      _ -> false
-    end)
+    direct_permissions =
+      policies
+      |> Map.get("p", [])
+      |> Enum.filter(fn
+        [^user, _obj, _act, ^domain] -> true
+        _ -> false
+      end)
 
     # Get permissions through roles
     user_roles = get_roles_for_user_in_domain(enforcer, user, domain)
 
-    role_permissions = user_roles
-    |> Enum.flat_map(fn role ->
-      policies
-      |> Map.get("p", [])
-      |> Enum.filter(fn
-        [^role, _obj, _act, ^domain] -> true
-        _ -> false
+    role_permissions =
+      user_roles
+      |> Enum.flat_map(fn role ->
+        policies
+        |> Map.get("p", [])
+        |> Enum.filter(fn
+          [^role, _obj, _act, ^domain] -> true
+          _ -> false
+        end)
       end)
-    end)
 
     (direct_permissions ++ role_permissions) |> Enum.uniq()
   end
@@ -862,7 +930,8 @@ defmodule CasbinEx2.Enforcer do
   @doc """
   Adds a role for a user in a specific domain.
   """
-  @spec add_role_for_user_in_domain(t(), String.t(), String.t(), String.t()) :: {:ok, t()} | {:error, term()}
+  @spec add_role_for_user_in_domain(t(), String.t(), String.t(), String.t()) ::
+          {:ok, t()} | {:error, term()}
   def add_role_for_user_in_domain(enforcer, user, role, domain) do
     add_named_grouping_policy(enforcer, "g", [user, role, domain])
   end
@@ -870,7 +939,8 @@ defmodule CasbinEx2.Enforcer do
   @doc """
   Deletes a role for a user in a specific domain.
   """
-  @spec delete_role_for_user_in_domain(t(), String.t(), String.t(), String.t()) :: {:ok, t()} | {:error, term()}
+  @spec delete_role_for_user_in_domain(t(), String.t(), String.t(), String.t()) ::
+          {:ok, t()} | {:error, term()}
   def delete_role_for_user_in_domain(enforcer, user, role, domain) do
     remove_named_grouping_policy(enforcer, "g", [user, role, domain])
   end
@@ -878,14 +948,20 @@ defmodule CasbinEx2.Enforcer do
   @doc """
   Deletes all roles for a user in a specific domain.
   """
-  @spec delete_roles_for_user_in_domain(t(), String.t(), String.t()) :: {:ok, t()} | {:error, term()}
-  def delete_roles_for_user_in_domain(%__MODULE__{grouping_policies: grouping_policies} = enforcer, user, domain) do
-    rules_to_remove = grouping_policies
-    |> Map.get("g", [])
-    |> Enum.filter(fn
-      [^user, _role, ^domain] -> true
-      _ -> false
-    end)
+  @spec delete_roles_for_user_in_domain(t(), String.t(), String.t()) ::
+          {:ok, t()} | {:error, term()}
+  def delete_roles_for_user_in_domain(
+        %__MODULE__{grouping_policies: grouping_policies} = enforcer,
+        user,
+        domain
+      ) do
+    rules_to_remove =
+      grouping_policies
+      |> Map.get("g", [])
+      |> Enum.filter(fn
+        [^user, _role, ^domain] -> true
+        _ -> false
+      end)
 
     remove_named_policies(enforcer, "g", rules_to_remove)
   end
@@ -894,13 +970,17 @@ defmodule CasbinEx2.Enforcer do
   Deletes all users in a specific domain.
   """
   @spec delete_all_users_by_domain(t(), String.t()) :: {:ok, t()} | {:error, term()}
-  def delete_all_users_by_domain(%__MODULE__{grouping_policies: grouping_policies} = enforcer, domain) do
-    rules_to_remove = grouping_policies
-    |> Map.get("g", [])
-    |> Enum.filter(fn
-      [_user, _role, ^domain] -> true
-      _ -> false
-    end)
+  def delete_all_users_by_domain(
+        %__MODULE__{grouping_policies: grouping_policies} = enforcer,
+        domain
+      ) do
+    rules_to_remove =
+      grouping_policies
+      |> Map.get("g", [])
+      |> Enum.filter(fn
+        [_user, _role, ^domain] -> true
+        _ -> false
+      end)
 
     remove_named_policies(enforcer, "g", rules_to_remove)
   end
@@ -909,28 +989,38 @@ defmodule CasbinEx2.Enforcer do
   Deletes multiple domains.
   """
   @spec delete_domains(t(), [String.t()]) :: {:ok, t()} | {:error, term()}
-  def delete_domains(%__MODULE__{policies: policies, grouping_policies: grouping_policies} = enforcer, domains) do
+  def delete_domains(
+        %__MODULE__{policies: policies, grouping_policies: grouping_policies} = enforcer,
+        domains
+      ) do
     # Remove policies in these domains
-    updated_policies = Map.new(policies, fn {ptype, rules} ->
-      filtered_rules = Enum.reject(rules, fn rule ->
-        domain = Enum.at(rule, 3)
-        domain in domains
+    updated_policies =
+      Map.new(policies, fn {ptype, rules} ->
+        filtered_rules =
+          Enum.reject(rules, fn rule ->
+            domain = Enum.at(rule, 3)
+            domain in domains
+          end)
+
+        {ptype, filtered_rules}
       end)
-      {ptype, filtered_rules}
-    end)
 
     # Remove grouping policies in these domains
-    updated_grouping_policies = Map.new(grouping_policies, fn {ptype, rules} ->
-      filtered_rules = Enum.reject(rules, fn rule ->
-        domain = Enum.at(rule, 2)
-        domain in domains
-      end)
-      {ptype, filtered_rules}
-    end)
+    updated_grouping_policies =
+      Map.new(grouping_policies, fn {ptype, rules} ->
+        filtered_rules =
+          Enum.reject(rules, fn rule ->
+            domain = Enum.at(rule, 2)
+            domain in domains
+          end)
 
-    updated_enforcer = %{enforcer |
-      policies: updated_policies,
-      grouping_policies: updated_grouping_policies
+        {ptype, filtered_rules}
+      end)
+
+    updated_enforcer = %{
+      enforcer
+      | policies: updated_policies,
+        grouping_policies: updated_grouping_policies
     }
 
     if enforcer.auto_save do
@@ -945,8 +1035,13 @@ defmodule CasbinEx2.Enforcer do
   @doc """
   Removes a named grouping policy rule.
   """
-  @spec remove_named_grouping_policy(t(), String.t(), [String.t()]) :: {:ok, t()} | {:error, term()}
-  def remove_named_grouping_policy(%__MODULE__{grouping_policies: grouping_policies, role_manager: role_manager} = enforcer, ptype, params) do
+  @spec remove_named_grouping_policy(t(), String.t(), [String.t()]) ::
+          {:ok, t()} | {:error, term()}
+  def remove_named_grouping_policy(
+        %__MODULE__{grouping_policies: grouping_policies, role_manager: role_manager} = enforcer,
+        ptype,
+        params
+      ) do
     current_rules = Map.get(grouping_policies, ptype, [])
 
     if params in current_rules do
@@ -954,18 +1049,22 @@ defmodule CasbinEx2.Enforcer do
       new_grouping_policies = Map.put(grouping_policies, ptype, new_rules)
 
       # Update role manager
-      new_role_manager = case params do
-        [user, role] ->
-          RoleManager.delete_link(role_manager, user, role, "")
-        [user, role, domain] ->
-          RoleManager.delete_link(role_manager, user, role, domain)
-        _ ->
-          role_manager
-      end
+      new_role_manager =
+        case params do
+          [user, role] ->
+            RoleManager.delete_link(role_manager, user, role, "")
 
-      updated_enforcer = %{enforcer |
-        grouping_policies: new_grouping_policies,
-        role_manager: new_role_manager
+          [user, role, domain] ->
+            RoleManager.delete_link(role_manager, user, role, domain)
+
+          _ ->
+            role_manager
+        end
+
+      updated_enforcer = %{
+        enforcer
+        | grouping_policies: new_grouping_policies,
+          role_manager: new_role_manager
       }
 
       if enforcer.auto_save do
@@ -998,22 +1097,29 @@ defmodule CasbinEx2.Enforcer do
   end
 
   # Internal enforcement function that returns both result and explanation
-  defp enforce_internal(%__MODULE__{policies: policies, role_manager: _role_manager, function_map: _function_map} = enforcer, request, matcher_expr) do
+  defp enforce_internal(
+         %__MODULE__{policies: policies, role_manager: _role_manager, function_map: _function_map} =
+           enforcer,
+         request,
+         matcher_expr
+       ) do
     _matched_policies = []
     _explanations = []
 
     # Get only "p" type policies and evaluate them
     p_policies = Map.get(policies, "p", [])
 
-    result = p_policies
-    |> Enum.reduce_while({false, []}, fn policy, {_acc_result, acc_explain} ->
-      case evaluate_policy_with_explanation(enforcer, policy, request, matcher_expr) do
-        {true, explanation} ->
-          {:halt, {true, acc_explain ++ [explanation]}}
-        {false, explanation} ->
-          {:cont, {false, acc_explain ++ [explanation]}}
-      end
-    end)
+    result =
+      p_policies
+      |> Enum.reduce_while({false, []}, fn policy, {_acc_result, acc_explain} ->
+        case evaluate_policy_with_explanation(enforcer, policy, request, matcher_expr) do
+          {true, explanation} ->
+            {:halt, {true, acc_explain ++ [explanation]}}
+
+          {false, explanation} ->
+            {:cont, {false, acc_explain ++ [explanation]}}
+        end
+      end)
 
     case result do
       {decision, explanations} -> {decision, explanations}
@@ -1031,11 +1137,13 @@ defmodule CasbinEx2.Enforcer do
         else
           # Check role inheritance: user has role AND object and action match
           if obj == req_obj and act == req_act and check_role_inheritance(enforcer, req_sub, sub) do
-            {true, "Role inheritance match: #{req_sub} has role #{sub} for policy #{inspect(policy)}"}
+            {true,
+             "Role inheritance match: #{req_sub} has role #{sub} for policy #{inspect(policy)}"}
           else
             {false, "No match for policy #{inspect(policy)}"}
           end
         end
+
       _ ->
         {false, "Policy format mismatch: #{inspect(policy)}"}
     end
@@ -1044,7 +1152,6 @@ defmodule CasbinEx2.Enforcer do
   defp check_role_inheritance(%__MODULE__{role_manager: role_manager}, user, role) do
     RoleManager.has_link(role_manager, user, role, "")
   end
-
 
   # Built-in functions
 
@@ -1057,27 +1164,30 @@ defmodule CasbinEx2.Enforcer do
 
   defp key_match2(key1, key2) do
     # KeyMatch2: /foo/bar matches /foo/:id
-    pattern = key2
-    |> String.replace("*", ".*")
-    |> String.replace(~r/:([^\/]+)/, "([^/]+)")
+    pattern =
+      key2
+      |> String.replace("*", ".*")
+      |> String.replace(~r/:([^\/]+)/, "([^/]+)")
 
     String.match?(key1, ~r/^#{pattern}$/)
   end
 
   defp key_match3(key1, key2) do
     # KeyMatch3: /foo/bar matches /foo/{id}
-    pattern = key2
-    |> String.replace("*", ".*")
-    |> String.replace(~r/\{([^}]+)\}/, "([^/]+)")
+    pattern =
+      key2
+      |> String.replace("*", ".*")
+      |> String.replace(~r/\{([^}]+)\}/, "([^/]+)")
 
     String.match?(key1, ~r/^#{pattern}$/)
   end
 
   defp key_match4(key1, key2) do
     # KeyMatch4: /foo/bar matches /foo/{id}/bar
-    pattern = key2
-    |> String.replace("*", ".*")
-    |> String.replace(~r/\{([^}]+)\}/, "([^/]+)")
+    pattern =
+      key2
+      |> String.replace("*", ".*")
+      |> String.replace(~r/\{([^}]+)\}/, "([^/]+)")
 
     String.match?(key1, ~r/^#{pattern}$/)
   end
@@ -1092,8 +1202,11 @@ defmodule CasbinEx2.Enforcer do
     key_match5_helper(key1_chars, key2_chars, i, j, length(key1_chars), length(key2_chars))
   end
 
-  defp key_match5_helper(_key1_chars, _key2_chars, i, j, len1, len2) when i >= len1 and j >= len2, do: true
-  defp key_match5_helper(_key1_chars, _key2_chars, i, j, len1, len2) when i >= len1 or j >= len2, do: false
+  defp key_match5_helper(_key1_chars, _key2_chars, i, j, len1, len2) when i >= len1 and j >= len2,
+    do: true
+
+  defp key_match5_helper(_key1_chars, _key2_chars, i, j, len1, len2) when i >= len1 or j >= len2,
+    do: false
 
   defp key_match5_helper(key1_chars, key2_chars, i, j, len1, len2) do
     char1 = Enum.at(key1_chars, i)
@@ -1163,32 +1276,35 @@ defmodule CasbinEx2.Enforcer do
   # Glob matching functions
   defp glob_match(key1, key2) do
     # Basic glob matching with * and ?
-    pattern = key2
-    |> String.replace("*", ".*")
-    |> String.replace("?", ".")
+    pattern =
+      key2
+      |> String.replace("*", ".*")
+      |> String.replace("?", ".")
 
     String.match?(key1, ~r/^#{pattern}$/)
   end
 
   defp glob_match2(key1, key2) do
     # Enhanced glob matching with ** for directory matching
-    pattern = key2
-    |> String.replace("**", "__DOUBLESTAR__")
-    |> String.replace("*", "[^/]*")
-    |> String.replace("__DOUBLESTAR__", ".*")
-    |> String.replace("?", "[^/]")
+    pattern =
+      key2
+      |> String.replace("**", "__DOUBLESTAR__")
+      |> String.replace("*", "[^/]*")
+      |> String.replace("__DOUBLESTAR__", ".*")
+      |> String.replace("?", "[^/]")
 
     String.match?(key1, ~r/^#{pattern}$/)
   end
 
   defp glob_match3(key1, key2) do
     # Advanced glob matching with character classes
-    pattern = key2
-    |> String.replace("**", "__DOUBLESTAR__")
-    |> String.replace("*", "[^/]*")
-    |> String.replace("__DOUBLESTAR__", ".*")
-    |> String.replace("?", "[^/]")
-    |> convert_char_classes()
+    pattern =
+      key2
+      |> String.replace("**", "__DOUBLESTAR__")
+      |> String.replace("*", "[^/]*")
+      |> String.replace("__DOUBLESTAR__", ".*")
+      |> String.replace("?", "[^/]")
+      |> convert_char_classes()
 
     String.match?(key1, ~r/^#{pattern}$/)
   end
@@ -1240,13 +1356,14 @@ defmodule CasbinEx2.Enforcer do
     # Simplified network matching - in production, use proper CIDR libraries
     ip_int = ip_to_integer(ip)
     network_int = ip_to_integer(network)
-    mask = bnot (1 <<< (32 - prefix_len)) - 1
+    mask = bnot((1 <<< (32 - prefix_len)) - 1)
 
     (ip_int &&& mask) == (network_int &&& mask)
   end
 
-  defp ip_to_integer({a, b, c, d}), do: (a <<< 24) ||| (b <<< 16) ||| (c <<< 8) ||| d
-  defp ip_to_integer(_), do: 0  # Simplified for IPv4
+  defp ip_to_integer({a, b, c, d}), do: a <<< 24 ||| b <<< 16 ||| c <<< 8 ||| d
+  # Simplified for IPv4
+  defp ip_to_integer(_), do: 0
 
   defp ip_in_range?(ip_str, range_str) do
     case String.split(range_str, "-") do

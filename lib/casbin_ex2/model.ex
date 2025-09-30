@@ -15,12 +15,12 @@ defmodule CasbinEx2.Model do
   ]
 
   @type t :: %__MODULE__{
-    request_definition: map(),
-    policy_definition: map(),
-    role_definition: map(),
-    policy_effect: map(),
-    matchers: map()
-  }
+          request_definition: map(),
+          policy_definition: map(),
+          role_definition: map(),
+          policy_effect: map(),
+          matchers: map()
+        }
 
   @doc """
   Loads a model from a configuration file.
@@ -30,6 +30,7 @@ defmodule CasbinEx2.Model do
     case File.read(model_path) do
       {:ok, content} ->
         parse_model(content)
+
       {:error, reason} ->
         {:error, "Failed to read model file: #{reason}"}
     end
@@ -73,12 +74,15 @@ defmodule CasbinEx2.Model do
   @spec get_request_tokens(t()) :: [String.t()]
   def get_request_tokens(%__MODULE__{request_definition: request_definition}) do
     case Map.get(request_definition, "r") do
-      nil -> []
+      nil ->
+        []
+
       value when is_binary(value) ->
         value
         |> String.split(",")
         |> Enum.map(&String.trim/1)
         |> Enum.reject(&(&1 == ""))
+
       value when is_map(value) ->
         Map.get(value, "r", "")
         |> String.split(",")
@@ -93,12 +97,15 @@ defmodule CasbinEx2.Model do
   @spec get_policy_tokens(t(), String.t()) :: [String.t()]
   def get_policy_tokens(%__MODULE__{policy_definition: policy_definition}, policy_type) do
     case Map.get(policy_definition, policy_type) do
-      nil -> []
+      nil ->
+        []
+
       value when is_binary(value) ->
         value
         |> String.split(",")
         |> Enum.map(&String.trim/1)
         |> Enum.reject(&(&1 == ""))
+
       value when is_map(value) ->
         Map.get(value, policy_type, "")
         |> String.split(",")
@@ -113,12 +120,15 @@ defmodule CasbinEx2.Model do
   @spec get_role_tokens(t(), String.t()) :: [String.t()]
   def get_role_tokens(%__MODULE__{role_definition: role_definition}, role_type) do
     case Map.get(role_definition, role_type) do
-      nil -> []
+      nil ->
+        []
+
       value when is_binary(value) ->
         value
         |> String.split(",")
         |> Enum.map(&String.trim/1)
         |> Enum.reject(&(&1 == ""))
+
       value when is_map(value) ->
         Map.get(value, role_type, "")
         |> String.split(",")
@@ -162,6 +172,7 @@ defmodule CasbinEx2.Model do
             line
             |> String.slice(1..-2//1)
             |> String.trim()
+
           {sections, section_name}
 
         # Key-value pair

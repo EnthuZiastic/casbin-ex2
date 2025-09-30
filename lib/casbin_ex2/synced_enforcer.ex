@@ -13,9 +13,9 @@ defmodule CasbinEx2.SyncedEnforcer do
   defstruct [:enforcer, :lock]
 
   @type t :: %__MODULE__{
-    enforcer: Enforcer.t(),
-    lock: :gen_server.server_ref()
-  }
+          enforcer: Enforcer.t(),
+          lock: :gen_server.server_ref()
+        }
 
   #
   # Client API
@@ -169,7 +169,19 @@ defmodule CasbinEx2.SyncedEnforcer do
 
   # Read operations
   @impl GenServer
-  def handle_call(call, from, state) when elem(call, 0) in [:enforce, :batch_enforce, :get_policy, :get_filtered_policy, :has_policy, :get_grouping_policy, :get_roles_for_user, :get_users_for_role, :has_role_for_user, :get_permissions_for_user] do
+  def handle_call(call, from, state)
+      when elem(call, 0) in [
+             :enforce,
+             :batch_enforce,
+             :get_policy,
+             :get_filtered_policy,
+             :has_policy,
+             :get_grouping_policy,
+             :get_roles_for_user,
+             :get_users_for_role,
+             :has_role_for_user,
+             :get_permissions_for_user
+           ] do
     with_read_lock(state, fn ->
       handle_read_operation(call, from, state)
     end)
@@ -383,13 +395,14 @@ defmodule CasbinEx2.SyncedEnforcer do
     %{policies: policies} = enforcer
     current_rules = Map.get(policies, ptype, [])
 
-    new_rules = Enum.reduce(rules, current_rules, fn rule, acc ->
-      if rule in acc do
-        acc
-      else
-        [rule | acc]
-      end
-    end)
+    new_rules =
+      Enum.reduce(rules, current_rules, fn rule, acc ->
+        if rule in acc do
+          acc
+        else
+          [rule | acc]
+        end
+      end)
 
     new_policies = Map.put(policies, ptype, new_rules)
     new_enforcer = %{enforcer | policies: new_policies}
@@ -421,18 +434,22 @@ defmodule CasbinEx2.SyncedEnforcer do
       new_grouping_policies = Map.put(grouping_policies, ptype, new_rules)
 
       # Update role manager
-      new_role_manager = case rule do
-        [user, role] ->
-          CasbinEx2.RoleManager.add_link(role_manager, user, role, "")
-        [user, role, domain] ->
-          CasbinEx2.RoleManager.add_link(role_manager, user, role, domain)
-        _ ->
-          role_manager
-      end
+      new_role_manager =
+        case rule do
+          [user, role] ->
+            CasbinEx2.RoleManager.add_link(role_manager, user, role, "")
 
-      new_enforcer = %{enforcer |
-        grouping_policies: new_grouping_policies,
-        role_manager: new_role_manager
+          [user, role, domain] ->
+            CasbinEx2.RoleManager.add_link(role_manager, user, role, domain)
+
+          _ ->
+            role_manager
+        end
+
+      new_enforcer = %{
+        enforcer
+        | grouping_policies: new_grouping_policies,
+          role_manager: new_role_manager
       }
 
       {:ok, new_enforcer}
@@ -448,18 +465,22 @@ defmodule CasbinEx2.SyncedEnforcer do
       new_grouping_policies = Map.put(grouping_policies, ptype, new_rules)
 
       # Update role manager
-      new_role_manager = case rule do
-        [user, role] ->
-          CasbinEx2.RoleManager.delete_link(role_manager, user, role, "")
-        [user, role, domain] ->
-          CasbinEx2.RoleManager.delete_link(role_manager, user, role, domain)
-        _ ->
-          role_manager
-      end
+      new_role_manager =
+        case rule do
+          [user, role] ->
+            CasbinEx2.RoleManager.delete_link(role_manager, user, role, "")
 
-      new_enforcer = %{enforcer |
-        grouping_policies: new_grouping_policies,
-        role_manager: new_role_manager
+          [user, role, domain] ->
+            CasbinEx2.RoleManager.delete_link(role_manager, user, role, domain)
+
+          _ ->
+            role_manager
+        end
+
+      new_enforcer = %{
+        enforcer
+        | grouping_policies: new_grouping_policies,
+          role_manager: new_role_manager
       }
 
       {:ok, new_enforcer}
@@ -495,26 +516,28 @@ defmodule CasbinEx2.SyncedEnforcer do
     # Get direct permissions for user
     current_rules = Map.get(enforcer.policies, "p", [])
 
-    direct_permissions = Enum.filter(current_rules, fn rule ->
-      case rule do
-        [^user | _] when domain == "" -> true
-        [^user, _, _, ^domain] -> true
-        _ -> false
-      end
-    end)
+    direct_permissions =
+      Enum.filter(current_rules, fn rule ->
+        case rule do
+          [^user | _] when domain == "" -> true
+          [^user, _, _, ^domain] -> true
+          _ -> false
+        end
+      end)
 
     # Get permissions through roles
     roles = CasbinEx2.RoleManager.get_roles(enforcer.role_manager, user, domain)
 
-    role_permissions = Enum.flat_map(roles, fn role ->
-      Enum.filter(current_rules, fn rule ->
-        case rule do
-          [^role | _] when domain == "" -> true
-          [^role, _, _, ^domain] -> true
-          _ -> false
-        end
+    role_permissions =
+      Enum.flat_map(roles, fn role ->
+        Enum.filter(current_rules, fn rule ->
+          case rule do
+            [^role | _] when domain == "" -> true
+            [^role, _, _, ^domain] -> true
+            _ -> false
+          end
+        end)
       end)
-    end)
 
     (direct_permissions ++ role_permissions) |> Enum.uniq()
   end

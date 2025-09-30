@@ -13,10 +13,10 @@ defmodule CasbinEx2.Watcher.RedisWatcher do
   defstruct [:redis_conn, :channel, :update_callback]
 
   @type t :: %__MODULE__{
-    redis_conn: pid() | nil,
-    channel: String.t(),
-    update_callback: function() | nil
-  }
+          redis_conn: pid() | nil,
+          channel: String.t(),
+          update_callback: function() | nil
+        }
 
   @default_channel "casbin_policy_update"
 
@@ -101,6 +101,7 @@ defmodule CasbinEx2.Watcher.RedisWatcher do
       enforcer: enforcer_name,
       timestamp: System.system_time()
     })
+
     {:noreply, state}
   end
 
@@ -112,10 +113,12 @@ defmodule CasbinEx2.Watcher.RedisWatcher do
         if state.update_callback do
           state.update_callback.()
         end
+
       {:ok, %{"type" => "enforcer_update", "enforcer" => enforcer_name}} ->
         if state.update_callback do
           state.update_callback.(enforcer_name)
         end
+
       _ ->
         :ok
     end

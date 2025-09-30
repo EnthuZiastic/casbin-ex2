@@ -33,6 +33,7 @@ defmodule CasbinEx2.EnforcerSupervisor do
     case Registry.lookup(CasbinEx2.EnforcerRegistry, name) do
       [{pid, _}] ->
         DynamicSupervisor.terminate_child(__MODULE__, pid)
+
       [] ->
         {:error, :not_found}
     end

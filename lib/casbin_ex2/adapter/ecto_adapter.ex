@@ -12,8 +12,8 @@ defmodule CasbinEx2.Adapter.EctoAdapter do
   defstruct [:repo]
 
   @type t :: %__MODULE__{
-    repo: module()
-  }
+          repo: module()
+        }
 
   @doc """
   Creates a new Ecto adapter with the given repository.
@@ -208,7 +208,9 @@ defmodule CasbinEx2.Adapter.EctoAdapter do
 
     # Apply filter if provided
     case filter do
-      nil -> base_query
+      nil ->
+        base_query
+
       filter_map when is_map(filter_map) ->
         Enum.reduce(filter_map, base_query, fn {key, value}, query ->
           case key do
@@ -216,7 +218,9 @@ defmodule CasbinEx2.Adapter.EctoAdapter do
             _ -> query
           end
         end)
-      _ -> base_query
+
+      _ ->
+        base_query
     end
   end
 

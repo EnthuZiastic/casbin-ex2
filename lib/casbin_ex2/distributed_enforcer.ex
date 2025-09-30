@@ -23,16 +23,17 @@ defmodule CasbinEx2.DistributedEnforcer do
   ]
 
   @type t :: %__MODULE__{
-    enforcer_name: String.t(),
-    local_enforcer: pid() | nil,
-    watcher: Watcher.t() | nil,
-    nodes: [node()],
-    sync_interval: non_neg_integer(),
-    last_sync: DateTime.t() | nil,
-    auto_sync: boolean()
-  }
+          enforcer_name: String.t(),
+          local_enforcer: pid() | nil,
+          watcher: Watcher.t() | nil,
+          nodes: [node()],
+          sync_interval: non_neg_integer(),
+          last_sync: DateTime.t() | nil,
+          auto_sync: boolean()
+        }
 
-  @default_sync_interval 30_000 # 30 seconds
+  # 30 seconds
+  @default_sync_interval 30_000
   @registry CasbinEx2.Registry
 
   @doc """
@@ -69,6 +70,7 @@ defmodule CasbinEx2.DistributedEnforcer do
     case Registry.lookup(@registry, {:distributed_enforcer, enforcer_name}) do
       [{pid, _}] ->
         GenServer.call(pid, {:enforce, params})
+
       [] ->
         {:error, :enforcer_not_found}
     end
@@ -82,6 +84,7 @@ defmodule CasbinEx2.DistributedEnforcer do
     case Registry.lookup(@registry, {:distributed_enforcer, enforcer_name}) do
       [{pid, _}] ->
         GenServer.call(pid, {:add_policy, params})
+
       [] ->
         {:error, :enforcer_not_found}
     end
@@ -95,6 +98,7 @@ defmodule CasbinEx2.DistributedEnforcer do
     case Registry.lookup(@registry, {:distributed_enforcer, enforcer_name}) do
       [{pid, _}] ->
         GenServer.call(pid, {:remove_policy, params})
+
       [] ->
         {:error, :enforcer_not_found}
     end
@@ -108,6 +112,7 @@ defmodule CasbinEx2.DistributedEnforcer do
     case Registry.lookup(@registry, {:distributed_enforcer, enforcer_name}) do
       [{pid, _}] ->
         GenServer.call(pid, :sync_policies)
+
       [] ->
         {:error, :enforcer_not_found}
     end
@@ -116,11 +121,16 @@ defmodule CasbinEx2.DistributedEnforcer do
   @doc """
   Gets the cluster status for the distributed enforcer.
   """
-  @spec cluster_status(String.t()) :: %{nodes: [node()], healthy_nodes: [node()], last_sync: DateTime.t() | nil}
+  @spec cluster_status(String.t()) :: %{
+          nodes: [node()],
+          healthy_nodes: [node()],
+          last_sync: DateTime.t() | nil
+        }
   def cluster_status(enforcer_name) do
     case Registry.lookup(@registry, {:distributed_enforcer, enforcer_name}) do
       [{pid, _}] ->
         GenServer.call(pid, :cluster_status)
+
       [] ->
         {:error, :enforcer_not_found}
     end
@@ -134,6 +144,7 @@ defmodule CasbinEx2.DistributedEnforcer do
     case Registry.lookup(@registry, {:distributed_enforcer, enforcer_name}) do
       [{pid, _}] ->
         GenServer.call(pid, {:set_auto_sync, enabled})
+
       [] ->
         {:error, :enforcer_not_found}
     end
@@ -149,8 +160,12 @@ defmodule CasbinEx2.DistributedEnforcer do
 
     # Start local enforcer
     model_path = Keyword.fetch!(opts, :model_path)
-    local_enforcer_opts = Keyword.drop(opts, [:nodes, :sync_interval, :auto_sync, :watcher, :model_path])
-    {:ok, local_enforcer} = EnforcerServer.start_link(enforcer_name, model_path, local_enforcer_opts)
+
+    local_enforcer_opts =
+      Keyword.drop(opts, [:nodes, :sync_interval, :auto_sync, :watcher, :model_path])
+
+    {:ok, local_enforcer} =
+      EnforcerServer.start_link(enforcer_name, model_path, local_enforcer_opts)
 
     # Setup watcher if provided
     if watcher do
@@ -270,6 +285,7 @@ defmodule CasbinEx2.DistributedEnforcer do
     case action do
       :add_policy ->
         EnforcerServer.add_policy(state.local_enforcer, params)
+
       :remove_policy ->
         EnforcerServer.remove_policy(state.local_enforcer, params)
     end
@@ -321,6 +337,7 @@ defmodule CasbinEx2.DistributedEnforcer do
       case Registry.lookup({@registry, node}, {:distributed_enforcer, state.enforcer_name}) do
         [{pid, _}] ->
           GenServer.cast(pid, message)
+
         [] ->
           Logger.warning("Distributed enforcer #{state.enforcer_name} not found on node #{node}")
       end
@@ -334,7 +351,10 @@ defmodule CasbinEx2.DistributedEnforcer do
       # Get policies from majority of nodes and reconcile
       reconcile_policies(healthy_nodes, state)
     else
-      Logger.warning("Not enough healthy nodes for sync in distributed enforcer #{state.enforcer_name}")
+      Logger.warning(
+        "Not enough healthy nodes for sync in distributed enforcer #{state.enforcer_name}"
+      )
+
       {:error, :insufficient_nodes}
     end
   end

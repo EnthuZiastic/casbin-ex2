@@ -5,12 +5,11 @@ defmodule CasbinEx2.Adapter.FileAdapter do
 
   @behaviour CasbinEx2.Adapter
 
-
   defstruct [:file_path]
 
   @type t :: %__MODULE__{
-    file_path: String.t()
-  }
+          file_path: String.t()
+        }
 
   @doc """
   Creates a new file adapter.
@@ -25,9 +24,11 @@ defmodule CasbinEx2.Adapter.FileAdapter do
     case File.read(file_path) do
       {:ok, content} ->
         parse_policies(content)
+
       {:error, :enoent} ->
         # File doesn't exist, return empty policies
         {:ok, %{}, %{}}
+
       {:error, reason} ->
         {:error, "Failed to read policy file: #{reason}"}
     end
