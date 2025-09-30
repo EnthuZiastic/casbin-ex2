@@ -1,1 +1,2 @@
 - Make sure to have similarly named functions in Elixir when taking reference from the Golang reference project in ../casbin
+- This project is an Elixir version of ../casbin written in Golang
