@@ -282,15 +282,10 @@ defmodule CasbinEx2.SyncedEnforcer do
         end
 
       {:add_policies, rules} ->
-        case add_policies_impl(state.enforcer, "p", "p", rules) do
-          {:ok, new_enforcer} ->
-            new_state = %{state | enforcer: new_enforcer}
-            update_ets(new_state)
-            {:reply, true, new_state}
-
-          {:error, _reason} ->
-            {:reply, false, state}
-        end
+        {:ok, new_enforcer} = add_policies_impl(state.enforcer, "p", "p", rules)
+        new_state = %{state | enforcer: new_enforcer}
+        update_ets(new_state)
+        {:reply, true, new_state}
 
       {:remove_policy, params} ->
         case remove_policy_impl(state.enforcer, "p", "p", params) do
@@ -347,15 +342,10 @@ defmodule CasbinEx2.SyncedEnforcer do
         end
 
       {:build_role_links} ->
-        case Enforcer.build_role_links(state.enforcer) do
-          {:ok, new_enforcer} ->
-            new_state = %{state | enforcer: new_enforcer}
-            update_ets(new_state)
-            {:reply, :ok, new_state}
-
-          {:error, reason} ->
-            {:reply, {:error, reason}, state}
-        end
+        {:ok, new_enforcer} = Enforcer.build_role_links(state.enforcer)
+        new_state = %{state | enforcer: new_enforcer}
+        update_ets(new_state)
+        {:reply, :ok, new_state}
 
       _ ->
         {:reply, {:error, :unknown_write_operation}, state}

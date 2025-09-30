@@ -128,9 +128,11 @@ defmodule CasbinEx2.CachedEnforcer do
   def handle_call({:enable_cache, enable}, _from, state) do
     new_state = %{state | enable_cache: enable}
 
-    if not enable do
+    new_state = if not enable do
       # Clear cache when disabling
-      new_state = %{new_state | cache: %{}}
+      %{new_state | cache: %{}}
+    else
+      new_state
     end
 
     Logger.info("Cache #{if enable, do: "enabled", else: "disabled"}")

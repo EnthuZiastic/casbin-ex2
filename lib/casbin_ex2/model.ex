@@ -48,8 +48,11 @@ defmodule CasbinEx2.Model do
   """
   @spec get_matcher(t()) :: String.t() | nil
   def get_matcher(%__MODULE__{matchers: matchers}) do
-    Map.get(matchers, "m", %{})
-    |> Map.get("m")
+    case Map.get(matchers, "m") do
+      nil -> nil
+      value when is_binary(value) -> value
+      value when is_map(value) -> Map.get(value, "m")
+    end
   end
 
   @doc """
@@ -57,8 +60,11 @@ defmodule CasbinEx2.Model do
   """
   @spec get_policy_effect(t()) :: String.t() | nil
   def get_policy_effect(%__MODULE__{policy_effect: policy_effect}) do
-    Map.get(policy_effect, "e", %{})
-    |> Map.get("e")
+    case Map.get(policy_effect, "e") do
+      nil -> nil
+      value when is_binary(value) -> value
+      value when is_map(value) -> Map.get(value, "e")
+    end
   end
 
   @doc """
@@ -66,11 +72,19 @@ defmodule CasbinEx2.Model do
   """
   @spec get_request_tokens(t()) :: [String.t()]
   def get_request_tokens(%__MODULE__{request_definition: request_definition}) do
-    Map.get(request_definition, "r", %{})
-    |> Map.get("r", "")
-    |> String.split(",")
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
+    case Map.get(request_definition, "r") do
+      nil -> []
+      value when is_binary(value) ->
+        value
+        |> String.split(",")
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+      value when is_map(value) ->
+        Map.get(value, "r", "")
+        |> String.split(",")
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+    end
   end
 
   @doc """
@@ -78,11 +92,19 @@ defmodule CasbinEx2.Model do
   """
   @spec get_policy_tokens(t(), String.t()) :: [String.t()]
   def get_policy_tokens(%__MODULE__{policy_definition: policy_definition}, policy_type) do
-    Map.get(policy_definition, "p", %{})
-    |> Map.get(policy_type, "")
-    |> String.split(",")
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
+    case Map.get(policy_definition, policy_type) do
+      nil -> []
+      value when is_binary(value) ->
+        value
+        |> String.split(",")
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+      value when is_map(value) ->
+        Map.get(value, policy_type, "")
+        |> String.split(",")
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+    end
   end
 
   @doc """
@@ -90,11 +112,19 @@ defmodule CasbinEx2.Model do
   """
   @spec get_role_tokens(t(), String.t()) :: [String.t()]
   def get_role_tokens(%__MODULE__{role_definition: role_definition}, role_type) do
-    Map.get(role_definition, "g", %{})
-    |> Map.get(role_type, "")
-    |> String.split(",")
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
+    case Map.get(role_definition, role_type) do
+      nil -> []
+      value when is_binary(value) ->
+        value
+        |> String.split(",")
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+      value when is_map(value) ->
+        Map.get(value, role_type, "")
+        |> String.split(",")
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+    end
   end
 
   # Private functions
@@ -130,7 +160,7 @@ defmodule CasbinEx2.Model do
         String.starts_with?(line, "[") and String.ends_with?(line, "]") ->
           section_name =
             line
-            |> String.slice(1..-2)
+            |> String.slice(1..-2//1)
             |> String.trim()
           {sections, section_name}
 

@@ -2,7 +2,8 @@ defmodule CasbinEx2Test do
   use ExUnit.Case
   doctest CasbinEx2
 
-  test "greets the world" do
-    assert CasbinEx2.hello() == :world
+  test "module loads correctly" do
+    # Simple test to verify the module loads
+    assert Code.ensure_loaded?(CasbinEx2)
   end
 end

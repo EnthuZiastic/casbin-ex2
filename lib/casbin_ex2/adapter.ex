@@ -13,6 +13,21 @@ defmodule CasbinEx2.Adapter do
   @callback load_policy(t(), Model.t()) :: {:ok, map(), map()} | {:error, term()}
 
   @doc """
+  Loads filtered policies from the storage.
+  """
+  @callback load_filtered_policy(t(), Model.t(), any()) :: {:ok, map(), map()} | {:error, term()}
+
+  @doc """
+  Loads incremental filtered policies from the storage.
+  """
+  @callback load_incremental_filtered_policy(t(), Model.t(), any()) :: {:ok, map(), map()} | {:error, term()}
+
+  @doc """
+  Checks if the adapter supports filtered loading.
+  """
+  @callback is_filtered(t()) :: boolean()
+
+  @doc """
   Saves all policies to the storage.
   """
   @callback save_policy(t(), map(), map()) :: :ok | {:error, term()}
@@ -38,6 +53,30 @@ defmodule CasbinEx2.Adapter do
   @spec load_policy(t(), Model.t()) :: {:ok, map(), map()} | {:error, term()}
   def load_policy(adapter, model) do
     adapter.__struct__.load_policy(adapter, model)
+  end
+
+  @doc """
+  Loads filtered policies using the given adapter.
+  """
+  @spec load_filtered_policy(t(), Model.t(), any()) :: {:ok, map(), map()} | {:error, term()}
+  def load_filtered_policy(adapter, model, filter) do
+    adapter.__struct__.load_filtered_policy(adapter, model, filter)
+  end
+
+  @doc """
+  Loads incremental filtered policies using the given adapter.
+  """
+  @spec load_incremental_filtered_policy(t(), Model.t(), any()) :: {:ok, map(), map()} | {:error, term()}
+  def load_incremental_filtered_policy(adapter, model, filter) do
+    adapter.__struct__.load_incremental_filtered_policy(adapter, model, filter)
+  end
+
+  @doc """
+  Checks if the adapter supports filtered loading.
+  """
+  @spec is_filtered(t()) :: boolean()
+  def is_filtered(adapter) do
+    adapter.__struct__.is_filtered(adapter)
   end
 
   @doc """

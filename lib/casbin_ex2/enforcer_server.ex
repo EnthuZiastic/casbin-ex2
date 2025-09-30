@@ -201,6 +201,115 @@ defmodule CasbinEx2.EnforcerServer do
   end
 
   @doc """
+  Clears all policies.
+  """
+  def clear_policy(name) do
+    GenServer.call(via_tuple(name), {:clear_policy})
+  end
+
+  #
+  # Self-Management APIs (bypass auto-notify)
+  #
+
+  @doc """
+  Adds a policy rule without triggering auto-save or watcher notifications.
+  """
+  def add_policy_self(name, params) when is_list(params) do
+    GenServer.call(via_tuple(name), {:add_policy_self, params})
+  end
+
+  @doc """
+  Adds multiple policy rules without triggering auto-save or watcher notifications.
+  """
+  def add_policies_self(name, rules) when is_list(rules) do
+    GenServer.call(via_tuple(name), {:add_policies_self, rules})
+  end
+
+  @doc """
+  Removes a policy rule without triggering auto-save or watcher notifications.
+  """
+  def remove_policy_self(name, params) when is_list(params) do
+    GenServer.call(via_tuple(name), {:remove_policy_self, params})
+  end
+
+  @doc """
+  Removes multiple policy rules without triggering auto-save or watcher notifications.
+  """
+  def remove_policies_self(name, rules) when is_list(rules) do
+    GenServer.call(via_tuple(name), {:remove_policies_self, rules})
+  end
+
+  @doc """
+  Removes filtered policy rules without triggering auto-save or watcher notifications.
+  """
+  def remove_filtered_policy_self(name, field_index, field_values) do
+    GenServer.call(via_tuple(name), {:remove_filtered_policy_self, field_index, field_values})
+  end
+
+  @doc """
+  Adds a grouping policy without triggering auto-save or watcher notifications.
+  """
+  def add_grouping_policy_self(name, params) when is_list(params) do
+    GenServer.call(via_tuple(name), {:add_grouping_policy_self, params})
+  end
+
+  @doc """
+  Adds multiple grouping policies without triggering auto-save or watcher notifications.
+  """
+  def add_grouping_policies_self(name, rules) when is_list(rules) do
+    GenServer.call(via_tuple(name), {:add_grouping_policies_self, rules})
+  end
+
+  @doc """
+  Removes a grouping policy without triggering auto-save or watcher notifications.
+  """
+  def remove_grouping_policy_self(name, params) when is_list(params) do
+    GenServer.call(via_tuple(name), {:remove_grouping_policy_self, params})
+  end
+
+  @doc """
+  Removes multiple grouping policies without triggering auto-save or watcher notifications.
+  """
+  def remove_grouping_policies_self(name, rules) when is_list(rules) do
+    GenServer.call(via_tuple(name), {:remove_grouping_policies_self, rules})
+  end
+
+  @doc """
+  Removes filtered grouping policies without triggering auto-save or watcher notifications.
+  """
+  def remove_filtered_grouping_policy_self(name, field_index, field_values) do
+    GenServer.call(via_tuple(name), {:remove_filtered_grouping_policy_self, field_index, field_values})
+  end
+
+  @doc """
+  Updates a policy rule without triggering auto-save or watcher notifications.
+  """
+  def update_policy_self(name, old_params, new_params) do
+    GenServer.call(via_tuple(name), {:update_policy_self, old_params, new_params})
+  end
+
+  @doc """
+  Updates multiple policy rules without triggering auto-save or watcher notifications.
+  """
+  def update_policies_self(name, old_rules, new_rules) do
+    GenServer.call(via_tuple(name), {:update_policies_self, old_rules, new_rules})
+  end
+
+  @doc """
+  Updates grouping policies without triggering auto-save or watcher notifications.
+  """
+  def update_grouping_policy_self(name, old_params, new_params) do
+    GenServer.call(via_tuple(name), {:update_grouping_policy_self, old_params, new_params})
+  end
+
+  @doc """
+  Updates multiple grouping policies without triggering auto-save or watcher notifications.
+  """
+  def update_grouping_policies_self(name, old_rules, new_rules) do
+    GenServer.call(via_tuple(name), {:update_grouping_policies_self, old_rules, new_rules})
+  end
+
+  @doc """
   Enables or disables the enforcer.
   """
   def enable_enforce(name, enable) do
@@ -393,14 +502,123 @@ defmodule CasbinEx2.EnforcerServer do
     {:reply, :ok, new_enforcer}
   end
 
-  def handle_call({:build_role_links}, _from, enforcer) do
-    case Enforcer.build_role_links(enforcer) do
-      {:ok, new_enforcer} ->
-        update_ets(new_enforcer)
-        {:reply, :ok, new_enforcer}
+  def handle_call({:clear_policy}, _from, enforcer) do
+    new_enforcer = %{enforcer | policies: %{}, grouping_policies: %{}}
+    update_ets(new_enforcer)
+    {:reply, :ok, new_enforcer}
+  end
 
-      {:error, reason} ->
-        {:reply, {:error, reason}, enforcer}
+  def handle_call({:build_role_links}, _from, enforcer) do
+    {:ok, new_enforcer} = Enforcer.build_role_links(enforcer)
+    update_ets(new_enforcer)
+    {:reply, :ok, new_enforcer}
+  end
+
+  # Self-Management API handlers (bypass auto-notify)
+
+  def handle_call({:add_policy_self, params}, _from, enforcer) do
+    case add_policy_impl(enforcer, "p", "p", params) do
+      {:ok, new_enforcer} ->
+        {:reply, true, new_enforcer}
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:add_policies_self, rules}, _from, enforcer) do
+    case add_policies_impl(enforcer, "p", "p", rules) do
+      {:ok, new_enforcer} ->
+        {:reply, true, new_enforcer}
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:remove_policy_self, params}, _from, enforcer) do
+    case remove_policy_impl(enforcer, "p", "p", params) do
+      {:ok, new_enforcer} ->
+        {:reply, true, new_enforcer}
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:remove_policies_self, rules}, _from, enforcer) do
+    {:ok, new_enforcer} = remove_policies_impl(enforcer, "p", "p", rules)
+    {:reply, true, new_enforcer}
+  end
+
+  def handle_call({:remove_filtered_policy_self, field_index, field_values}, _from, enforcer) do
+    {:ok, new_enforcer} = remove_filtered_policy_impl(enforcer, "p", "p", field_index, field_values)
+    {:reply, true, new_enforcer}
+  end
+
+  def handle_call({:add_grouping_policy_self, params}, _from, enforcer) do
+    case add_grouping_policy_impl(enforcer, "g", "g", params) do
+      {:ok, new_enforcer} ->
+        {:reply, true, new_enforcer}
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:add_grouping_policies_self, rules}, _from, enforcer) do
+    {:ok, new_enforcer} = add_grouping_policies_impl(enforcer, "g", "g", rules)
+    {:reply, true, new_enforcer}
+  end
+
+  def handle_call({:remove_grouping_policy_self, params}, _from, enforcer) do
+    case remove_grouping_policy_impl(enforcer, "g", "g", params) do
+      {:ok, new_enforcer} ->
+        {:reply, true, new_enforcer}
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:remove_grouping_policies_self, rules}, _from, enforcer) do
+    {:ok, new_enforcer} = remove_grouping_policies_impl(enforcer, "g", "g", rules)
+    {:reply, true, new_enforcer}
+  end
+
+  def handle_call({:remove_filtered_grouping_policy_self, field_index, field_values}, _from, enforcer) do
+    {:ok, new_enforcer} = remove_filtered_grouping_policy_impl(enforcer, "g", "g", field_index, field_values)
+    {:reply, true, new_enforcer}
+  end
+
+  def handle_call({:update_policy_self, old_params, new_params}, _from, enforcer) do
+    case update_policy_impl(enforcer, "p", "p", old_params, new_params) do
+      {:ok, new_enforcer} ->
+        {:reply, true, new_enforcer}
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:update_policies_self, old_rules, new_rules}, _from, enforcer) do
+    case update_policies_impl(enforcer, "p", "p", old_rules, new_rules) do
+      {:ok, new_enforcer} ->
+        {:reply, true, new_enforcer}
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:update_grouping_policy_self, old_params, new_params}, _from, enforcer) do
+    case update_grouping_policy_impl(enforcer, "g", "g", old_params, new_params) do
+      {:ok, new_enforcer} ->
+        {:reply, true, new_enforcer}
+      {:error, _reason} ->
+        {:reply, false, enforcer}
+    end
+  end
+
+  def handle_call({:update_grouping_policies_self, old_rules, new_rules}, _from, enforcer) do
+    case update_grouping_policies_impl(enforcer, "g", "g", old_rules, new_rules) do
+      {:ok, new_enforcer} ->
+        {:reply, true, new_enforcer}
+      {:error, _reason} ->
+        {:reply, false, enforcer}
     end
   end
 
@@ -602,5 +820,148 @@ defmodule CasbinEx2.EnforcerServer do
 
   defp has_role_for_user_impl(enforcer, user, role, domain) do
     CasbinEx2.RoleManager.has_link(enforcer.role_manager, user, role, domain)
+  end
+
+  # Missing impl functions for Self-management APIs
+
+  defp remove_policies_impl(enforcer, _sec, ptype, rules) do
+    new_policies = Enum.reduce(rules, enforcer.policies, fn rule, acc ->
+      case Map.get(acc, ptype) do
+        nil -> acc
+        policies ->
+          filtered_policies = Enum.reject(policies, &(&1 == rule))
+          Map.put(acc, ptype, filtered_policies)
+      end
+    end)
+
+    {:ok, %{enforcer | policies: new_policies}}
+  end
+
+  defp remove_filtered_policy_impl(enforcer, _sec, ptype, field_index, field_values) do
+    case Map.get(enforcer.policies, ptype) do
+      nil ->
+        {:ok, enforcer}
+      policies ->
+        filtered_policies = Enum.reject(policies, fn policy ->
+          match_filtered_policy?(policy, field_index, field_values)
+        end)
+        new_policies = Map.put(enforcer.policies, ptype, filtered_policies)
+        {:ok, %{enforcer | policies: new_policies}}
+    end
+  end
+
+  defp add_grouping_policies_impl(enforcer, _sec, ptype, rules) do
+    new_grouping_policies = Enum.reduce(rules, enforcer.grouping_policies, fn rule, acc ->
+      case Map.get(acc, ptype) do
+        nil -> Map.put(acc, ptype, [rule])
+        policies -> Map.put(acc, ptype, [rule | policies])
+      end
+    end)
+
+    {:ok, %{enforcer | grouping_policies: new_grouping_policies}}
+  end
+
+  defp remove_grouping_policies_impl(enforcer, _sec, ptype, rules) do
+    new_grouping_policies = Enum.reduce(rules, enforcer.grouping_policies, fn rule, acc ->
+      case Map.get(acc, ptype) do
+        nil -> acc
+        policies ->
+          filtered_policies = Enum.reject(policies, &(&1 == rule))
+          Map.put(acc, ptype, filtered_policies)
+      end
+    end)
+
+    {:ok, %{enforcer | grouping_policies: new_grouping_policies}}
+  end
+
+  defp remove_filtered_grouping_policy_impl(enforcer, _sec, ptype, field_index, field_values) do
+    case Map.get(enforcer.grouping_policies, ptype) do
+      nil ->
+        {:ok, enforcer}
+      policies ->
+        filtered_policies = Enum.reject(policies, fn policy ->
+          match_filtered_policy?(policy, field_index, field_values)
+        end)
+        new_grouping_policies = Map.put(enforcer.grouping_policies, ptype, filtered_policies)
+        {:ok, %{enforcer | grouping_policies: new_grouping_policies}}
+    end
+  end
+
+  defp update_policy_impl(enforcer, _sec, ptype, old_params, new_params) do
+    case Map.get(enforcer.policies, ptype) do
+      nil ->
+        {:error, :policy_not_found}
+      policies ->
+        case Enum.find_index(policies, &(&1 == old_params)) do
+          nil ->
+            {:error, :policy_not_found}
+          index ->
+            updated_policies = List.replace_at(policies, index, new_params)
+            new_policies = Map.put(enforcer.policies, ptype, updated_policies)
+            {:ok, %{enforcer | policies: new_policies}}
+        end
+    end
+  end
+
+  defp update_policies_impl(enforcer, _sec, ptype, old_rules, new_rules) do
+    if length(old_rules) != length(new_rules) do
+      {:error, :rule_count_mismatch}
+    else
+      # Update each old rule to corresponding new rule
+      result = Enum.zip(old_rules, new_rules)
+      |> Enum.reduce_while({:ok, enforcer}, fn {old_rule, new_rule}, {:ok, acc_enforcer} ->
+        case update_policy_impl(acc_enforcer, "p", ptype, old_rule, new_rule) do
+          {:ok, updated_enforcer} -> {:cont, {:ok, updated_enforcer}}
+          error -> {:halt, error}
+        end
+      end)
+
+      result
+    end
+  end
+
+  defp update_grouping_policy_impl(enforcer, _sec, ptype, old_params, new_params) do
+    case Map.get(enforcer.grouping_policies, ptype) do
+      nil ->
+        {:error, :policy_not_found}
+      policies ->
+        case Enum.find_index(policies, &(&1 == old_params)) do
+          nil ->
+            {:error, :policy_not_found}
+          index ->
+            updated_policies = List.replace_at(policies, index, new_params)
+            new_grouping_policies = Map.put(enforcer.grouping_policies, ptype, updated_policies)
+            {:ok, %{enforcer | grouping_policies: new_grouping_policies}}
+        end
+    end
+  end
+
+  defp update_grouping_policies_impl(enforcer, _sec, ptype, old_rules, new_rules) do
+    if length(old_rules) != length(new_rules) do
+      {:error, :rule_count_mismatch}
+    else
+      # Update each old rule to corresponding new rule
+      result = Enum.zip(old_rules, new_rules)
+      |> Enum.reduce_while({:ok, enforcer}, fn {old_rule, new_rule}, {:ok, acc_enforcer} ->
+        case update_grouping_policy_impl(acc_enforcer, "g", ptype, old_rule, new_rule) do
+          {:ok, updated_enforcer} -> {:cont, {:ok, updated_enforcer}}
+          error -> {:halt, error}
+        end
+      end)
+
+      result
+    end
+  end
+
+  defp match_filtered_policy?(policy, field_index, field_values) do
+    field_values
+    |> Enum.with_index()
+    |> Enum.all?(fn {value, index} ->
+      policy_index = field_index + index
+      case Enum.at(policy, policy_index) do
+        nil -> false
+        policy_value -> policy_value == value
+      end
+    end)
   end
 end

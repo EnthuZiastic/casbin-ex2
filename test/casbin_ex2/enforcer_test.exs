@@ -2,7 +2,6 @@ defmodule CasbinEx2.EnforcerTest do
   use ExUnit.Case
 
   alias CasbinEx2.Enforcer
-  alias CasbinEx2.Model
   alias CasbinEx2.Adapter.FileAdapter
 
   @moduletag :unit

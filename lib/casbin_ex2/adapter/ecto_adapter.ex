@@ -7,7 +7,6 @@ defmodule CasbinEx2.Adapter.EctoAdapter do
 
   import Ecto.Query
 
-  alias CasbinEx2.Model
   alias CasbinEx2.Adapter.EctoAdapter.CasbinRule
 
   defstruct [:repo]
@@ -97,7 +96,7 @@ defmodule CasbinEx2.Adapter.EctoAdapter do
   end
 
   @impl CasbinEx2.Adapter
-  def add_policy(%__MODULE__{repo: repo}, sec, ptype, rule) do
+  def add_policy(%__MODULE__{repo: repo}, _sec, ptype, rule) do
     try do
       changeset = create_changeset(ptype, rule)
       repo.insert!(changeset)
@@ -108,7 +107,7 @@ defmodule CasbinEx2.Adapter.EctoAdapter do
   end
 
   @impl CasbinEx2.Adapter
-  def remove_policy(%__MODULE__{repo: repo}, sec, ptype, rule) do
+  def remove_policy(%__MODULE__{repo: repo}, _sec, ptype, rule) do
     try do
       query = build_remove_query(ptype, rule)
       repo.delete_all(query)
@@ -119,7 +118,7 @@ defmodule CasbinEx2.Adapter.EctoAdapter do
   end
 
   @impl CasbinEx2.Adapter
-  def remove_filtered_policy(%__MODULE__{repo: repo}, sec, ptype, field_index, field_values) do
+  def remove_filtered_policy(%__MODULE__{repo: repo}, _sec, ptype, field_index, field_values) do
     try do
       query = build_filtered_remove_query(ptype, field_index, field_values)
       repo.delete_all(query)
@@ -127,6 +126,31 @@ defmodule CasbinEx2.Adapter.EctoAdapter do
     rescue
       error -> {:error, "Failed to remove filtered policy: #{inspect(error)}"}
     end
+  end
+
+  @impl CasbinEx2.Adapter
+  def is_filtered(%__MODULE__{}) do
+    true
+  end
+
+  @impl CasbinEx2.Adapter
+  def load_filtered_policy(%__MODULE__{repo: repo}, _model, filter) do
+    try do
+      query = build_filtered_query(filter)
+      rules = repo.all(query)
+
+      {policies, grouping_policies} = categorize_rules(rules)
+      {:ok, policies, grouping_policies}
+    rescue
+      error -> {:error, "Failed to load filtered policies: #{inspect(error)}"}
+    end
+  end
+
+  @impl CasbinEx2.Adapter
+  def load_incremental_filtered_policy(%__MODULE__{repo: repo}, model, filter) do
+    # For now, just delegate to load_filtered_policy
+    # In a real implementation, this could support incremental loading
+    load_filtered_policy(%__MODULE__{repo: repo}, model, filter)
   end
 
   # Private functions
@@ -175,6 +199,41 @@ defmodule CasbinEx2.Adapter.EctoAdapter do
         from(r in query, where: field(r, ^field_name) == ^value)
       else
         query
+      end
+    end)
+  end
+
+  defp build_filtered_query(filter) do
+    base_query = from(r in CasbinRule)
+
+    # Apply filter if provided
+    case filter do
+      nil -> base_query
+      filter_map when is_map(filter_map) ->
+        Enum.reduce(filter_map, base_query, fn {key, value}, query ->
+          case key do
+            :ptype -> from(r in query, where: r.ptype == ^value)
+            _ -> query
+          end
+        end)
+      _ -> base_query
+    end
+  end
+
+  defp categorize_rules(rules) do
+    Enum.reduce(rules, {%{}, %{}}, fn rule, {policies, grouping_policies} ->
+      rule_list = build_rule_list(rule)
+
+      if String.starts_with?(rule.ptype, "g") do
+        # This is a grouping policy
+        grouping_list = Map.get(grouping_policies, rule.ptype, [])
+        updated_grouping = Map.put(grouping_policies, rule.ptype, [rule_list | grouping_list])
+        {policies, updated_grouping}
+      else
+        # This is a regular policy
+        policy_list = Map.get(policies, rule.ptype, [])
+        updated_policies = Map.put(policies, rule.ptype, [rule_list | policy_list])
+        {updated_policies, grouping_policies}
       end
     end)
   end

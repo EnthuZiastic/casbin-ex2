@@ -5,7 +5,6 @@ defmodule CasbinEx2.Adapter.FileAdapter do
 
   @behaviour CasbinEx2.Adapter
 
-  alias CasbinEx2.Model
 
   defstruct [:file_path]
 
@@ -63,6 +62,23 @@ defmodule CasbinEx2.Adapter.FileAdapter do
     # For file adapter, we don't support incremental removals
     # Users should call save_policy instead
     {:error, "File adapter does not support incremental policy removals"}
+  end
+
+  @impl CasbinEx2.Adapter
+  def is_filtered(%__MODULE__{}) do
+    false
+  end
+
+  @impl CasbinEx2.Adapter
+  def load_filtered_policy(%__MODULE__{}, _model, _filter) do
+    # File adapter doesn't support filtered loading
+    {:error, "File adapter does not support filtered policy loading"}
+  end
+
+  @impl CasbinEx2.Adapter
+  def load_incremental_filtered_policy(%__MODULE__{}, _model, _filter) do
+    # File adapter doesn't support incremental filtered loading
+    {:error, "File adapter does not support incremental filtered policy loading"}
   end
 
   # Private functions

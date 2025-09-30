@@ -7,8 +7,20 @@ defmodule CasbinEx2.EnforcerServerTest do
   @moduletag :integration
 
   setup do
-    # Start the application supervisor for tests
-    start_supervised!(CasbinEx2.Application)
+    # Start the required components for tests
+    unless Process.whereis(CasbinEx2.EnforcerRegistry) do
+      start_supervised!({Registry, keys: :unique, name: CasbinEx2.EnforcerRegistry})
+    end
+
+    unless Process.whereis(CasbinEx2.EnforcerSupervisor) do
+      start_supervised!(CasbinEx2.EnforcerSupervisor)
+    end
+
+    # Create ETS table for enforcer persistence (if not already exists)
+    case :ets.info(:casbin_enforcers_table) do
+      :undefined -> :ets.new(:casbin_enforcers_table, [:public, :named_table])
+      _ -> :ok
+    end
 
     model_content = """
     [request_definition]
@@ -40,9 +52,14 @@ defmodule CasbinEx2.EnforcerServerTest do
   describe "EnforcerServer" do
     test "starts enforcer server and performs basic operations", %{model_path: model_path} do
       enforcer_name = :test_enforcer
+      policy_path = "/tmp/test_server_policy.csv"
 
-      # Start enforcer
-      assert {:ok, _pid} = EnforcerSupervisor.start_enforcer(enforcer_name, model_path)
+      # Create empty policy file
+      File.write!(policy_path, "")
+
+      # Start enforcer with proper adapter
+      adapter = CasbinEx2.Adapter.FileAdapter.new(policy_path)
+      assert {:ok, _pid} = EnforcerSupervisor.start_enforcer(enforcer_name, model_path, [adapter: adapter])
 
       # Add a policy
       assert EnforcerServer.add_policy(enforcer_name, ["alice", "data1", "read"]) == true
@@ -65,13 +82,21 @@ defmodule CasbinEx2.EnforcerServerTest do
 
       # Stop enforcer
       assert :ok = EnforcerSupervisor.stop_enforcer(enforcer_name)
+
+      # Cleanup
+      File.rm(policy_path)
     end
 
     test "handles RBAC operations", %{model_path: model_path} do
       enforcer_name = :test_rbac_enforcer
+      policy_path = "/tmp/test_rbac_policy.csv"
 
-      # Start enforcer
-      assert {:ok, _pid} = EnforcerSupervisor.start_enforcer(enforcer_name, model_path)
+      # Create empty policy file
+      File.write!(policy_path, "")
+
+      # Start enforcer with proper adapter
+      adapter = CasbinEx2.Adapter.FileAdapter.new(policy_path)
+      assert {:ok, _pid} = EnforcerSupervisor.start_enforcer(enforcer_name, model_path, [adapter: adapter])
 
       # Add role for user
       assert EnforcerServer.add_role_for_user(enforcer_name, "alice", "admin") == true
@@ -94,13 +119,21 @@ defmodule CasbinEx2.EnforcerServerTest do
 
       # Stop enforcer
       assert :ok = EnforcerSupervisor.stop_enforcer(enforcer_name)
+
+      # Cleanup
+      File.rm(policy_path)
     end
 
     test "handles batch operations", %{model_path: model_path} do
       enforcer_name = :test_batch_enforcer
+      policy_path = "/tmp/test_batch_policy.csv"
 
-      # Start enforcer
-      assert {:ok, _pid} = EnforcerSupervisor.start_enforcer(enforcer_name, model_path)
+      # Create empty policy file
+      File.write!(policy_path, "")
+
+      # Start enforcer with proper adapter
+      adapter = CasbinEx2.Adapter.FileAdapter.new(policy_path)
+      assert {:ok, _pid} = EnforcerSupervisor.start_enforcer(enforcer_name, model_path, [adapter: adapter])
 
       # Add multiple policies
       policies = [
@@ -123,6 +156,9 @@ defmodule CasbinEx2.EnforcerServerTest do
 
       # Stop enforcer
       assert :ok = EnforcerSupervisor.stop_enforcer(enforcer_name)
+
+      # Cleanup
+      File.rm(policy_path)
     end
   end
 end
