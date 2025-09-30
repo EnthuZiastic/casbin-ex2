@@ -608,6 +608,43 @@ defmodule CasbinEx2.Enforcer do
     params in current_rules
   end
 
+  @doc """
+  Removes filtered policy rules for the default policy type "p".
+  """
+  @spec remove_filtered_policy(t(), integer(), [String.t()]) :: {:ok, t()} | {:error, term()}
+  def remove_filtered_policy(enforcer, field_index, field_values) do
+    remove_filtered_named_policy(enforcer, "p", field_index, field_values)
+  end
+
+  @doc """
+  Removes filtered named policy rules.
+  """
+  @spec remove_filtered_named_policy(t(), String.t(), integer(), [String.t()]) ::
+          {:ok, t()} | {:error, term()}
+  def remove_filtered_named_policy(
+        %__MODULE__{policies: policies} = enforcer,
+        ptype,
+        field_index,
+        field_values
+      ) do
+    current_rules = Map.get(policies, ptype, [])
+
+    # Filter out rules that match the criteria
+    filtered_rules =
+      Enum.reject(current_rules, fn rule ->
+        rule_matches_filter?(rule, field_index, field_values)
+      end)
+
+    new_policies = Map.put(policies, ptype, filtered_rules)
+    updated_enforcer = %{enforcer | policies: new_policies}
+
+    if enforcer.auto_save do
+      save_policy(updated_enforcer)
+    else
+      {:ok, updated_enforcer}
+    end
+  end
+
   # Grouping Policy Management APIs
 
   @doc """

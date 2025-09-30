@@ -791,4 +791,152 @@ defmodule CasbinEx2.EnforcerTest do
     new_policies = Map.put(policies, "p", new_rules)
     {:ok, %{enforcer | policies: new_policies}}
   end
+
+  describe "batch enforcement APIs" do
+    test "batch_enforce processes multiple requests efficiently" do
+      enforcer = create_test_enforcer()
+      {:ok, enforcer} = add_test_policy(enforcer, ["alice", "data1", "read"])
+      {:ok, enforcer} = add_test_policy(enforcer, ["bob", "data2", "write"])
+      {:ok, enforcer} = add_test_policy(enforcer, ["charlie", "data3", "read"])
+
+      # Test small batch (sequential processing)
+      requests = [
+        ["alice", "data1", "read"],
+        ["bob", "data2", "write"],
+        ["alice", "data2", "write"],
+        ["charlie", "data3", "read"]
+      ]
+
+      results = Enforcer.batch_enforce(enforcer, requests)
+      assert results == [true, true, false, true]
+    end
+
+    test "batch_enforce handles large batches with concurrent processing" do
+      enforcer = create_test_enforcer()
+      {:ok, enforcer} = add_test_policy(enforcer, ["alice", "data1", "read"])
+
+      # Create a large batch (>10 requests) to trigger concurrent processing
+      requests = for _i <- 1..15, do: ["alice", "data1", "read"]
+
+      results = Enforcer.batch_enforce(enforcer, requests)
+      assert length(results) == 15
+      assert Enum.all?(results, fn result -> result == true end)
+    end
+
+    test "batch_enforce_with_matcher processes requests with custom matcher" do
+      enforcer = create_test_enforcer()
+      {:ok, enforcer} = add_test_policy(enforcer, ["alice", "data1", "read"])
+
+      # Custom matcher that always allows
+      custom_matcher = "r.sub == p.sub && r.obj == p.obj && r.act == p.act"
+
+      requests = [
+        ["alice", "data1", "read"],
+        ["bob", "data2", "write"]
+      ]
+
+      results = Enforcer.batch_enforce_with_matcher(enforcer, custom_matcher, requests)
+      assert length(results) == 2
+      # Alice should match
+      assert hd(results) == true
+      # Bob should not match
+      assert hd(tl(results)) == false
+    end
+
+    test "batch_enforce_ex returns decisions with explanations" do
+      enforcer = create_test_enforcer()
+      {:ok, enforcer} = add_test_policy(enforcer, ["alice", "data1", "read"])
+
+      requests = [
+        ["alice", "data1", "read"],
+        ["bob", "data2", "write"]
+      ]
+
+      results = Enforcer.batch_enforce_ex(enforcer, requests)
+      assert length(results) == 2
+
+      [{decision1, explanation1}, {decision2, explanation2}] = results
+      assert decision1 == true
+      assert is_list(explanation1)
+      assert decision2 == false
+      assert is_list(explanation2)
+    end
+  end
+
+  describe "filtered policy operations" do
+    test "remove_filtered_policy removes policies matching filter criteria" do
+      enforcer = create_test_enforcer()
+      {:ok, enforcer} = add_test_policy(enforcer, ["alice", "data1", "read"])
+      {:ok, enforcer} = add_test_policy(enforcer, ["alice", "data2", "write"])
+      {:ok, enforcer} = add_test_policy(enforcer, ["bob", "data1", "read"])
+
+      # Remove all policies for alice (field_index 0, value "alice")
+      assert {:ok, enforcer} = Enforcer.remove_filtered_policy(enforcer, 0, ["alice"])
+
+      policies = Enforcer.get_policy(enforcer)
+      assert ["alice", "data1", "read"] not in policies
+      assert ["alice", "data2", "write"] not in policies
+      assert ["bob", "data1", "read"] in policies
+    end
+
+    test "remove_filtered_named_policy removes policies from specific policy type" do
+      enforcer = create_test_enforcer()
+      {:ok, enforcer} = add_test_policy(enforcer, ["alice", "data1", "read"])
+      {:ok, enforcer} = add_test_policy(enforcer, ["alice", "data2", "write"])
+      {:ok, enforcer} = add_test_policy(enforcer, ["bob", "data1", "read"])
+
+      # Remove policies with "data1" object (field_index 1, value "data1")
+      assert {:ok, enforcer} = Enforcer.remove_filtered_named_policy(enforcer, "p", 1, ["data1"])
+
+      policies = Enforcer.get_policy(enforcer)
+      assert ["alice", "data1", "read"] not in policies
+      assert ["bob", "data1", "read"] not in policies
+      assert ["alice", "data2", "write"] in policies
+    end
+
+    test "remove_filtered_policy with multiple field values" do
+      enforcer = create_test_enforcer()
+      {:ok, enforcer} = add_test_policy(enforcer, ["alice", "data1", "read"])
+      {:ok, enforcer} = add_test_policy(enforcer, ["alice", "data1", "write"])
+      {:ok, enforcer} = add_test_policy(enforcer, ["alice", "data2", "read"])
+      {:ok, enforcer} = add_test_policy(enforcer, ["bob", "data1", "read"])
+
+      # Remove policies for alice with data1 (field_index 0, values ["alice", "data1"])
+      assert {:ok, enforcer} = Enforcer.remove_filtered_policy(enforcer, 0, ["alice", "data1"])
+
+      policies = Enforcer.get_policy(enforcer)
+      assert ["alice", "data1", "read"] not in policies
+      assert ["alice", "data1", "write"] not in policies
+      assert ["alice", "data2", "read"] in policies
+      assert ["bob", "data1", "read"] in policies
+    end
+
+    test "get_filtered_policy returns policies matching criteria" do
+      enforcer = create_test_enforcer()
+      {:ok, enforcer} = add_test_policy(enforcer, ["alice", "data1", "read"])
+      {:ok, enforcer} = add_test_policy(enforcer, ["alice", "data2", "write"])
+      {:ok, enforcer} = add_test_policy(enforcer, ["bob", "data1", "read"])
+
+      # Get all policies for alice
+      filtered_policies = Enforcer.get_filtered_policy(enforcer, 0, ["alice"])
+      assert ["alice", "data1", "read"] in filtered_policies
+      assert ["alice", "data2", "write"] in filtered_policies
+      assert ["bob", "data1", "read"] not in filtered_policies
+      assert length(filtered_policies) == 2
+    end
+
+    test "get_filtered_named_policy returns policies from specific type" do
+      enforcer = create_test_enforcer()
+      {:ok, enforcer} = add_test_policy(enforcer, ["alice", "data1", "read"])
+      {:ok, enforcer} = add_test_policy(enforcer, ["bob", "data1", "read"])
+      {:ok, enforcer} = add_test_policy(enforcer, ["charlie", "data2", "write"])
+
+      # Get all policies with "read" action (field_index 2, value "read")
+      filtered_policies = Enforcer.get_filtered_named_policy(enforcer, "p", 2, ["read"])
+      assert ["alice", "data1", "read"] in filtered_policies
+      assert ["bob", "data1", "read"] in filtered_policies
+      assert ["charlie", "data2", "write"] not in filtered_policies
+      assert length(filtered_policies) == 2
+    end
+  end
 end
