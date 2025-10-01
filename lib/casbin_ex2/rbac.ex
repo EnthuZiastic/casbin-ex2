@@ -23,10 +23,7 @@ defmodule CasbinEx2.RBAC do
         []
 
       rm ->
-        case CasbinEx2.RoleManager.get_roles(rm, user, domain) do
-          {:ok, roles} -> roles
-          {:error, _} -> []
-        end
+        CasbinEx2.RoleManager.get_roles(rm, user, domain)
     end
   end
 
@@ -39,10 +36,7 @@ defmodule CasbinEx2.RBAC do
         []
 
       rm ->
-        case CasbinEx2.RoleManager.get_users(rm, role, domain) do
-          {:ok, users} -> users
-          {:error, _} -> []
-        end
+        CasbinEx2.RoleManager.get_users(rm, role, domain)
     end
   end
 
@@ -432,7 +426,7 @@ defmodule CasbinEx2.RBAC do
   end
 
   defp remove_named_grouping_policy(
-         %Enforcer{grouping_policies: grouping_policies} = enforcer,
+         %Enforcer{grouping_policies: grouping_policies, role_manager: role_manager} = enforcer,
          ptype,
          params
        ) do
@@ -440,7 +434,29 @@ defmodule CasbinEx2.RBAC do
       policy_list = Map.get(grouping_policies, ptype, [])
       updated_policy_list = List.delete(policy_list, params)
       updated_policies = Map.put(grouping_policies, ptype, updated_policy_list)
-      updated_enforcer = %{enforcer | grouping_policies: updated_policies}
+
+      # Update role manager
+      updated_role_manager =
+        case {role_manager, params} do
+          {nil, _} ->
+            nil
+
+          {rm, [user, role]} ->
+            CasbinEx2.RoleManager.delete_link(rm, user, role, "")
+
+          {rm, [user, role, domain]} ->
+            CasbinEx2.RoleManager.delete_link(rm, user, role, domain)
+
+          {rm, _} ->
+            rm
+        end
+
+      updated_enforcer = %{
+        enforcer
+        | grouping_policies: updated_policies,
+          role_manager: updated_role_manager
+      }
+
       {:ok, updated_enforcer}
     else
       {:error, "grouping policy does not exist"}
