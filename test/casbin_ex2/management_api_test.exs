@@ -8,7 +8,9 @@ defmodule CasbinEx2.ManagementAPITest do
   alias CasbinEx2.{Enforcer, Management}
 
   setup do
-    {:ok, enforcer} = Enforcer.new_enforcer("examples/rbac_model.conf", "examples/rbac_policy.csv")
+    {:ok, enforcer} =
+      Enforcer.new_enforcer("examples/rbac_model.conf", "examples/rbac_policy.csv")
+
     {:ok, enforcer: enforcer}
   end
 
