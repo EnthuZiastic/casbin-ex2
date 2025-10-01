@@ -342,8 +342,8 @@ defmodule CasbinEx2.Adapter.ContextAdapter do
         cache_key = generate_cache_key(operation, args, context)
 
         case lookup_cache(cache_key) do
-          {:ok, cached_result} ->
-            {:ok, cached_result}
+          # {:ok, cached_result} ->
+          #   {:ok, cached_result}  # Unreachable clause - lookup_cache always returns :miss
 
           :miss ->
             # Cache miss - let operation continue and cache result

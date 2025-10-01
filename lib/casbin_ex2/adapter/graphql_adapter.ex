@@ -258,8 +258,10 @@ defmodule CasbinEx2.Adapter.GraphQLAdapter do
 
     # Start WebSocket connection for subscriptions
     case start_subscription(adapter, subscription) do
-      {:ok, pid} -> {:ok, pid}
-      {:error, reason} -> {:error, reason}
+      {:ok, pid} ->
+        {:ok, pid}
+
+        # {:error, reason} -> {:error, reason}  # Unreachable clause - start_subscription always returns {:ok, pid()}
     end
   end
 

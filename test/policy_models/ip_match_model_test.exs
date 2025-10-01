@@ -146,6 +146,9 @@ defmodule CasbinEx2.Model.IpMatchModelTest do
 
       :ok = MemoryAdapter.save_policy(adapter, policies, %{})
 
+      # Reload policies into enforcer
+      {:ok, enforcer} = Enforcer.load_policy(enforcer)
+
       {:ok, %{enforcer: enforcer}}
     end
 
@@ -207,6 +210,9 @@ defmodule CasbinEx2.Model.IpMatchModelTest do
 
       :ok = MemoryAdapter.save_policy(adapter, policies, grouping_policies)
 
+      # Reload policies into enforcer
+      {:ok, enforcer} = Enforcer.load_policy(enforcer)
+
       {:ok, %{enforcer: enforcer}}
     end
 
@@ -241,6 +247,9 @@ defmodule CasbinEx2.Model.IpMatchModelTest do
       }
 
       :ok = MemoryAdapter.save_policy(adapter, policies, %{})
+
+      # Reload policies into enforcer
+      {:ok, enforcer} = Enforcer.load_policy(enforcer)
 
       {:ok, %{enforcer: enforcer, current_time: current_time, future_time: future_time}}
     end

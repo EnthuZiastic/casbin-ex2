@@ -2,7 +2,6 @@ defmodule CasbinEx2.Adapter.MemoryAdapterTest do
   use ExUnit.Case, async: false
 
   alias CasbinEx2.Adapter.{FileAdapter, MemoryAdapter}
-  alias CasbinEx2.Model
 
   @sample_policies %{
     "p" => [

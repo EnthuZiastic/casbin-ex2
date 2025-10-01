@@ -103,7 +103,7 @@ defmodule CasbinEx2.Adapter.ContextAdapterTest do
 
     test "clears context" do
       base_adapter = MemoryAdapter.new()
-      adapter = ContextAdapter.new(base_adapter)
+      _adapter = ContextAdapter.new(base_adapter)
 
       ContextAdapter.set_context(%{test: true})
       assert Process.get(:casbin_context) != nil
@@ -365,7 +365,11 @@ defmodule CasbinEx2.Adapter.ContextAdapterTest do
         &ContextAdapter.tenant_isolation_middleware/3
       ]
 
-      base_adapter = MemoryAdapter.new(initial_policies: @sample_policies)
+      base_adapter =
+        MemoryAdapter.new(
+          initial_policies: @sample_policies,
+          initial_grouping_policies: @sample_grouping_policies
+        )
 
       adapter =
         ContextAdapter.new(
@@ -458,7 +462,12 @@ defmodule CasbinEx2.Adapter.ContextAdapterTest do
     end
 
     test "handles empty middleware list" do
-      base_adapter = MemoryAdapter.new(initial_policies: @sample_policies)
+      base_adapter =
+        MemoryAdapter.new(
+          initial_policies: @sample_policies,
+          initial_grouping_policies: @sample_grouping_policies
+        )
+
       adapter = ContextAdapter.new(base_adapter, %{}, middleware: [])
 
       {:ok, policies, grouping_policies} = ContextAdapter.load_policy(adapter, nil)
