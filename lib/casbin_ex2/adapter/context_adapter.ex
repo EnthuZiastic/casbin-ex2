@@ -297,15 +297,15 @@ defmodule CasbinEx2.Adapter.ContextAdapter do
   Logs all adapter operations with context information.
   """
   @spec audit_middleware(atom(), list(), context()) :: :continue
-  def audit_middleware(operation, args, context) do
-    require Logger
+  def audit_middleware(_operation, _args, _context) do
+    # require Logger
 
-    Logger.debug("Adapter operation #{operation}", %{
-      operation: operation,
-      args_count: length(args),
-      context: context,
-      timestamp: DateTime.utc_now()
-    })
+    # Logger.debug("Adapter operation #{operation}", %{
+    #   operation: operation,
+    #   args_count: length(args),
+    #   context: context,
+    #   timestamp: DateTime.utc_now()
+    # })
 
     :continue
   end
