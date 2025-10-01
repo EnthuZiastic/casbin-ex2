@@ -300,6 +300,34 @@ defmodule CasbinEx2.Management do
   end
 
   @doc """
+  Adds role inheritance rules to the current policy.
+  If a rule already exists, it will be skipped (not added).
+  Unlike add_grouping_policies, other non-existent rules are still added instead of returning error.
+  Returns {:ok, enforcer, count} where count is the number of rules successfully added.
+  """
+  def add_grouping_policies_ex(%Enforcer{} = enforcer, rules) do
+    add_named_grouping_policies_ex(enforcer, "g", rules)
+  end
+
+  @doc """
+  Adds named role inheritance rules to the current policy.
+  If a rule already exists, it will be skipped (not added).
+  Unlike add_named_grouping_policies, other non-existent rules are still added instead of returning error.
+  Returns {:ok, enforcer, count} where count is the number of rules successfully added.
+  """
+  def add_named_grouping_policies_ex(%Enforcer{} = enforcer, ptype, rules) do
+    {updated_enforcer, count} =
+      Enum.reduce(rules, {enforcer, 0}, fn rule, {current_enforcer, added_count} ->
+        case add_named_grouping_policy(current_enforcer, ptype, rule) do
+          {:ok, updated_enforcer} -> {updated_enforcer, added_count + 1}
+          {:error, _reason} -> {current_enforcer, added_count}
+        end
+      end)
+
+    {:ok, updated_enforcer, count}
+  end
+
+  @doc """
   Removes a role inheritance rule from the current policy.
   Returns {:ok, enforcer} if successful, {:error, reason} if failed.
   """
@@ -528,6 +556,34 @@ defmodule CasbinEx2.Management do
         {:error, _reason} -> {:halt, {:error, "failed to add policies"}}
       end
     end)
+  end
+
+  @doc """
+  Adds authorization rules to the current policy.
+  If a rule already exists, it will be skipped (not added).
+  Unlike add_policies, other non-existent rules are still added instead of returning error.
+  Returns {:ok, enforcer} with count of rules added.
+  """
+  def add_policies_ex(%Enforcer{} = enforcer, rules) do
+    add_named_policies_ex(enforcer, "p", rules)
+  end
+
+  @doc """
+  Adds authorization rules to the current named policy.
+  If a rule already exists, it will be skipped (not added).
+  Unlike add_named_policies, other non-existent rules are still added instead of returning error.
+  Returns {:ok, enforcer, count} where count is the number of rules successfully added.
+  """
+  def add_named_policies_ex(%Enforcer{} = enforcer, ptype, rules) do
+    {updated_enforcer, count} =
+      Enum.reduce(rules, {enforcer, 0}, fn rule, {current_enforcer, added_count} ->
+        case add_named_policy(current_enforcer, ptype, rule) do
+          {:ok, updated_enforcer} -> {updated_enforcer, added_count + 1}
+          {:error, _reason} -> {current_enforcer, added_count}
+        end
+      end)
+
+    {:ok, updated_enforcer, count}
   end
 
   @doc """
