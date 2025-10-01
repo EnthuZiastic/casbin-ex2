@@ -1682,8 +1682,8 @@ defmodule CasbinEx2.Enforcer do
 
     case substituted_args do
       [arg1, arg2] ->
-        # Call the function with 2 arguments
-        result = func.(arg1, arg2)
+        # Call the function with 2 arguments, adding empty string as 3rd arg for g function
+        result = func.(arg1, arg2, "")
         {:ok, result}
 
       [arg1, arg2, arg3] ->

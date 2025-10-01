@@ -198,16 +198,16 @@ defmodule CasbinEx2.DistributedEnforcer do
 
   @impl GenServer
   def handle_call({:enforce, params}, _from, state) do
-    result = EnforcerServer.enforce(state.local_enforcer, params)
+    result = GenServer.call(state.local_enforcer, {:enforce, params})
     {:reply, result, state}
   end
 
   def handle_call({:add_policy, params}, _from, state) do
     # Add to local enforcer first
-    result = EnforcerServer.add_policy(state.local_enforcer, params)
+    result = GenServer.call(state.local_enforcer, {:add_policy, params})
 
     case result do
-      :ok ->
+      true ->
         # Broadcast to other nodes
         broadcast_policy_change({:add_policy, params}, state)
 
@@ -218,17 +218,17 @@ defmodule CasbinEx2.DistributedEnforcer do
 
         {:reply, :ok, state}
 
-      error ->
-        {:reply, error, state}
+      false ->
+        {:reply, {:error, :add_failed}, state}
     end
   end
 
   def handle_call({:remove_policy, params}, _from, state) do
     # Remove from local enforcer first
-    result = EnforcerServer.remove_policy(state.local_enforcer, params)
+    result = GenServer.call(state.local_enforcer, {:remove_policy, params})
 
     case result do
-      :ok ->
+      true ->
         # Broadcast to other nodes
         broadcast_policy_change({:remove_policy, params}, state)
 
@@ -239,8 +239,8 @@ defmodule CasbinEx2.DistributedEnforcer do
 
         {:reply, :ok, state}
 
-      error ->
-        {:reply, error, state}
+      false ->
+        {:reply, {:error, :remove_failed}, state}
     end
   end
 
@@ -276,7 +276,7 @@ defmodule CasbinEx2.DistributedEnforcer do
   @impl GenServer
   def handle_cast(:policy_updated, state) do
     # Policy was updated via watcher, reload local enforcer
-    EnforcerServer.load_policy(state.local_enforcer)
+    GenServer.call(state.local_enforcer, :load_policy)
     {:noreply, state}
   end
 
@@ -284,10 +284,10 @@ defmodule CasbinEx2.DistributedEnforcer do
     # Apply remote policy change to local enforcer
     case action do
       :add_policy ->
-        EnforcerServer.add_policy(state.local_enforcer, params)
+        GenServer.call(state.local_enforcer, {:add_policy, params})
 
       :remove_policy ->
-        EnforcerServer.remove_policy(state.local_enforcer, params)
+        GenServer.call(state.local_enforcer, {:remove_policy, params})
     end
 
     {:noreply, state}
@@ -370,7 +370,7 @@ defmodule CasbinEx2.DistributedEnforcer do
     policies_by_node =
       Enum.map(nodes, fn node ->
         try do
-          case :rpc.call(node, EnforcerServer, :get_policy, [state.local_enforcer]) do
+          case :rpc.call(node, GenServer, :call, [state.local_enforcer, :get_policy]) do
             {:badrpc, _} -> {node, []}
             policies -> {node, policies}
           end
@@ -384,10 +384,10 @@ defmodule CasbinEx2.DistributedEnforcer do
       Enum.max_by(policies_by_node, fn {_node, policies} -> length(policies) end)
 
     # Update local enforcer with source policies
-    EnforcerServer.clear_policy(state.local_enforcer)
+    GenServer.call(state.local_enforcer, :clear_policy)
 
     Enum.each(source_policies, fn policy ->
-      EnforcerServer.add_policy(state.local_enforcer, policy)
+      GenServer.call(state.local_enforcer, {:add_policy, policy})
     end)
 
     Logger.debug("Synchronized policies for distributed enforcer #{state.enforcer_name}")

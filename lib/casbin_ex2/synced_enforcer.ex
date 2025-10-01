@@ -268,6 +268,7 @@ defmodule CasbinEx2.SyncedEnforcer do
 
   defp extract_operation_name(call) do
     case call do
+      {operation} -> operation
       {operation, _} -> operation
       {operation, _, _} -> operation
       {operation, _, _, _} -> operation
@@ -369,6 +370,7 @@ defmodule CasbinEx2.SyncedEnforcer do
     case categorize_write_operation(call) do
       {:policy_type, operation_data} -> handle_write_policy_operation(state, operation_data)
       {:grouping_type, operation_data} -> handle_write_grouping_operation(state, operation_data)
+      {:role_type, operation_data} -> handle_write_role_operation(state, operation_data)
       {:enforcer_type, operation_data} -> handle_write_enforcer_operation(state, operation_data)
       :unknown -> {:reply, {:error, :unknown_write_operation}, state}
     end
@@ -378,11 +380,20 @@ defmodule CasbinEx2.SyncedEnforcer do
     operation_name = extract_operation_name(call)
 
     cond do
-      operation_name in [:add_policy, :add_policies, :remove_policy] ->
+      operation_name in [
+        :add_policy,
+        :add_policies,
+        :remove_policy,
+        :remove_policies,
+        :remove_filtered_policy
+      ] ->
         {:policy_type, call}
 
       operation_name in [:add_grouping_policy, :remove_grouping_policy] ->
         {:grouping_type, call}
+
+      operation_name in [:add_role_for_user, :delete_role_for_user, :delete_roles_for_user] ->
+        {:role_type, call}
 
       operation_name in [:load_policy, :save_policy, :build_role_links] ->
         {:enforcer_type, call}
@@ -394,9 +405,20 @@ defmodule CasbinEx2.SyncedEnforcer do
 
   defp handle_write_policy_operation(state, call) do
     case call do
-      {:add_policy, params} -> handle_policy_operation(state, :add_policy, params)
-      {:add_policies, rules} -> handle_policy_batch_operation(state, :add_policies, rules)
-      {:remove_policy, params} -> handle_policy_operation(state, :remove_policy, params)
+      {:add_policy, params} ->
+        handle_policy_operation(state, :add_policy, params)
+
+      {:add_policies, rules} ->
+        handle_policy_batch_operation(state, :add_policies, rules)
+
+      {:remove_policy, params} ->
+        handle_policy_operation(state, :remove_policy, params)
+
+      {:remove_policies, rules} ->
+        handle_policy_batch_operation(state, :remove_policies, rules)
+
+      {:remove_filtered_policy, field_index, field_values} ->
+        handle_filtered_policy_operation(state, field_index, field_values)
     end
   end
 
@@ -438,6 +460,85 @@ defmodule CasbinEx2.SyncedEnforcer do
 
   defp handle_policy_batch_operation(state, :add_policies, rules) do
     {:ok, new_enforcer} = add_policies_impl(state.enforcer, "p", "p", rules)
+    new_state = %{state | enforcer: new_enforcer}
+    update_ets(new_state)
+    {:reply, true, new_state}
+  end
+
+  defp handle_policy_batch_operation(state, :remove_policies, rules) do
+    {:ok, new_enforcer} = remove_policies_impl(state.enforcer, "p", "p", rules)
+    new_state = %{state | enforcer: new_enforcer}
+    update_ets(new_state)
+    {:reply, true, new_state}
+  end
+
+  defp handle_filtered_policy_operation(state, field_index, field_values) do
+    case remove_filtered_policy_impl(state.enforcer, "p", "p", field_index, field_values) do
+      {:ok, new_enforcer} ->
+        new_state = %{state | enforcer: new_enforcer}
+        update_ets(new_state)
+        {:reply, true, new_state}
+
+      {:error, _reason} ->
+        {:reply, false, state}
+    end
+  end
+
+  defp handle_write_role_operation(state, call) do
+    case call do
+      {:add_role_for_user, user, role, domain} ->
+        handle_role_operation(state, :add, user, role, domain)
+
+      {:delete_role_for_user, user, role, domain} ->
+        handle_role_operation(state, :delete, user, role, domain)
+
+      {:delete_roles_for_user, user, domain} ->
+        handle_delete_all_roles_operation(state, user, domain)
+    end
+  end
+
+  defp handle_role_operation(state, operation, user, role, domain) do
+    params = if domain == "", do: [user, role], else: [user, role, domain]
+
+    operation_func =
+      case operation do
+        :add -> &add_grouping_policy_impl/4
+        :delete -> &remove_grouping_policy_impl/4
+      end
+
+    case operation_func.(state.enforcer, "g", "g", params) do
+      {:ok, new_enforcer} ->
+        new_state = %{state | enforcer: new_enforcer}
+        update_ets(new_state)
+        {:reply, true, new_state}
+
+      {:error, _reason} ->
+        {:reply, false, state}
+    end
+  end
+
+  defp handle_delete_all_roles_operation(state, user, domain) do
+    %{grouping_policies: grouping_policies} = state.enforcer
+    roles_to_remove = Map.get(grouping_policies, "g", [])
+
+    filtered_roles =
+      if domain == "" do
+        Enum.filter(roles_to_remove, fn [u | _] -> u == user end)
+      else
+        Enum.filter(roles_to_remove, fn
+          [u, _role, d] -> u == user and d == domain
+          _ -> false
+        end)
+      end
+
+    new_enforcer =
+      Enum.reduce(filtered_roles, state.enforcer, fn role, acc_enforcer ->
+        case remove_grouping_policy_impl(acc_enforcer, "g", "g", role) do
+          {:ok, updated} -> updated
+          {:error, _} -> acc_enforcer
+        end
+      end)
+
     new_state = %{state | enforcer: new_enforcer}
     update_ets(new_state)
     {:reply, true, new_state}
@@ -530,6 +631,48 @@ defmodule CasbinEx2.SyncedEnforcer do
     else
       {:error, :not_found}
     end
+  end
+
+  defp remove_policies_impl(enforcer, _sec, ptype, rules) do
+    %{policies: policies} = enforcer
+    current_rules = Map.get(policies, ptype, [])
+
+    new_rules =
+      Enum.reduce(rules, current_rules, fn rule, acc ->
+        List.delete(acc, rule)
+      end)
+
+    new_policies = Map.put(policies, ptype, new_rules)
+    new_enforcer = %{enforcer | policies: new_policies}
+    {:ok, new_enforcer}
+  end
+
+  defp remove_filtered_policy_impl(enforcer, _sec, ptype, field_index, field_values) do
+    %{policies: policies} = enforcer
+    current_rules = Map.get(policies, ptype, [])
+
+    new_rules =
+      Enum.reject(current_rules, fn rule ->
+        matches_filter?(rule, field_index, field_values)
+      end)
+
+    new_policies = Map.put(policies, ptype, new_rules)
+    new_enforcer = %{enforcer | policies: new_policies}
+    {:ok, new_enforcer}
+  end
+
+  defp matches_filter?(rule, field_index, field_values) do
+    Enum.with_index(field_values)
+    |> Enum.all?(fn {value, offset} ->
+      actual_index = field_index + offset
+
+      cond do
+        value == "" -> true
+        actual_index >= length(rule) -> false
+        Enum.at(rule, actual_index) == value -> true
+        true -> false
+      end
+    end)
   end
 
   defp add_grouping_policy_impl(enforcer, _sec, ptype, rule) do

@@ -53,6 +53,7 @@ defmodule CasbinEx2.Adapter.RedisAdapter do
   defstruct [
     :connection_opts,
     :pool_name,
+    :pool_size,
     :tenant_id,
     :key_prefix,
     :ttl,
@@ -65,6 +66,7 @@ defmodule CasbinEx2.Adapter.RedisAdapter do
   @type t :: %__MODULE__{
           connection_opts: keyword(),
           pool_name: atom(),
+          pool_size: pos_integer(),
           tenant_id: String.t(),
           key_prefix: String.t(),
           ttl: pos_integer() | nil,
@@ -138,11 +140,12 @@ defmodule CasbinEx2.Adapter.RedisAdapter do
     adapter = %__MODULE__{
       connection_opts: connection_opts,
       pool_name: pool_name,
+      pool_size: Keyword.get(opts, :pool_size, @default_pool_size),
       tenant_id: tenant_id,
       key_prefix: key_prefix,
       ttl: Keyword.get(opts, :ttl, @default_ttl),
       notifications: Keyword.get(opts, :notifications, false),
-      pub_sub_channel: "#{key_prefix}:notifications:#{tenant_id}",
+      pub_sub_channel: "#{key_prefix}:policy_updates:#{tenant_id}",
       versioning: Keyword.get(opts, :versioning, true),
       lock_timeout: Keyword.get(opts, :lock_timeout, @default_lock_timeout)
     }
@@ -359,18 +362,24 @@ defmodule CasbinEx2.Adapter.RedisAdapter do
     base_opts = [
       host: Keyword.get(opts, :host, "localhost"),
       port: Keyword.get(opts, :port, 6379),
-      database: Keyword.get(opts, :database, 0),
-      pool_size: Keyword.get(opts, :pool_size, @default_pool_size)
+      database: Keyword.get(opts, :database, 0)
     ]
 
-    case Keyword.get(opts, :password) do
-      nil -> base_opts
-      password -> Keyword.put(base_opts, :password, password)
-    end
+    base_opts_with_password =
+      case Keyword.get(opts, :password) do
+        nil -> base_opts
+        password -> Keyword.put(base_opts, :password, password)
+      end
+
+    # Note: Cluster and Sentinel configurations are stored in connection_opts
+    # but NOT passed to Redix, as they require special handling or different libraries
+    base_opts_with_password
     |> maybe_add_cluster_opts(opts)
     |> maybe_add_sentinel_opts(opts)
   end
 
+  # Store cluster configuration for future use, but don't pass to Redix
+  # Cluster support would require a different connection strategy
   defp maybe_add_cluster_opts(base_opts, opts) do
     case Keyword.get(opts, :cluster) do
       nil -> base_opts
@@ -378,6 +387,8 @@ defmodule CasbinEx2.Adapter.RedisAdapter do
     end
   end
 
+  # Store sentinel configuration for future use, but don't pass to Redix directly
+  # Sentinel support would require proper sentinel option formatting
   defp maybe_add_sentinel_opts(base_opts, opts) do
     case Keyword.get(opts, :sentinel) do
       nil -> base_opts
@@ -389,11 +400,18 @@ defmodule CasbinEx2.Adapter.RedisAdapter do
     pool_opts = [
       name: {:local, adapter.pool_name},
       worker_module: Redix,
-      size: adapter.connection_opts[:pool_size] || @default_pool_size,
+      size: adapter.pool_size,
       max_overflow: 0
     ]
 
-    case :poolboy.start_link(pool_opts, adapter.connection_opts) do
+    # Filter out cluster and sentinel options as they're not directly supported by Redix
+    # These would require special connection handling or different libraries
+    redix_opts =
+      adapter.connection_opts
+      |> Keyword.delete(:cluster)
+      |> Keyword.delete(:sentinel)
+
+    case :poolboy.start_link(pool_opts, redix_opts) do
       {:ok, _pid} -> :ok
       {:error, {:already_started, _pid}} -> :ok
       {:error, reason} -> raise "Failed to start Redis pool: #{inspect(reason)}"

@@ -191,12 +191,7 @@ defmodule CasbinEx2.Adapter.BatchAdapter do
   def flush(%__MODULE__{batch_buffer: operations} = adapter) do
     case execute_batch(adapter, Enum.reverse(operations)) do
       {:ok, updated_adapter} ->
-        {:ok,
-         %{
-           updated_adapter
-           | batch_buffer: [],
-             operation_count: updated_adapter.operation_count + length(operations)
-         }}
+        {:ok, %{updated_adapter | batch_buffer: []}}
 
       {:error, reason} ->
         {:error, reason}
@@ -421,8 +416,9 @@ defmodule CasbinEx2.Adapter.BatchAdapter do
     with {:ok, policies, grouping_policies} <- Adapter.load_policy(base_adapter, %Model{}),
          current_policies <- Map.get(policies, ptype, []),
          filtered_policies <- filter_policies(current_policies, field_index, field_values),
-         updated_policies <- Map.put(policies, ptype, filtered_policies) do
-      Adapter.save_policy(base_adapter, updated_policies, grouping_policies)
+         updated_policies <- Map.put(policies, ptype, filtered_policies),
+         :ok <- Adapter.save_policy(base_adapter, updated_policies, grouping_policies) do
+      {:ok, base_adapter}
     end
   end
 
@@ -449,12 +445,16 @@ defmodule CasbinEx2.Adapter.BatchAdapter do
 
   defp remove_filtered_with_fallback(base_adapter, ptype, field_index, field_values) do
     if function_exported?(base_adapter.__struct__, :remove_filtered_policies, 4) do
-      base_adapter.__struct__.remove_filtered_policies(
-        base_adapter,
-        ptype,
-        field_index,
-        field_values
-      )
+      case base_adapter.__struct__.remove_filtered_policies(
+             base_adapter,
+             ptype,
+             field_index,
+             field_values
+           ) do
+        :ok -> {:ok, base_adapter}
+        {:ok, _} = result -> result
+        {:error, _} = error -> error
+      end
     else
       # Fallback: load policies, filter, and save
       fallback_remove_filtered_policies(base_adapter, ptype, field_index, field_values)
