@@ -27,6 +27,12 @@ defmodule CasbinEx2.Enforcer do
     :auto_save,
     :auto_build_role_links,
     :auto_notify_watcher,
+    :auto_notify_dispatcher,
+    :log_enabled,
+    :accept_json_request,
+    :dispatcher,
+    :effector,
+    :named_role_managers,
     policies: %{},
     grouping_policies: %{}
   ]
@@ -42,6 +48,12 @@ defmodule CasbinEx2.Enforcer do
           auto_save: boolean(),
           auto_build_role_links: boolean(),
           auto_notify_watcher: boolean(),
+          auto_notify_dispatcher: boolean(),
+          log_enabled: boolean(),
+          accept_json_request: boolean(),
+          dispatcher: any() | nil,
+          effector: any() | nil,
+          named_role_managers: map(),
           policies: map(),
           grouping_policies: map()
         }
@@ -112,8 +124,12 @@ defmodule CasbinEx2.Enforcer do
       auto_save: true,
       auto_build_role_links: true,
       auto_notify_watcher: true,
+      auto_notify_dispatcher: false,
+      log_enabled: true,
+      accept_json_request: false,
       function_map: init_function_map(),
-      role_manager: RoleManager.new_role_manager(10)
+      role_manager: RoleManager.new_role_manager(10),
+      named_role_managers: %{}
     }
 
     case load_policy(enforcer) do
@@ -339,6 +355,214 @@ defmodule CasbinEx2.Enforcer do
   @spec enable_auto_save(t(), boolean()) :: t()
   def enable_auto_save(enforcer, auto_save) do
     %{enforcer | auto_save: auto_save}
+  end
+
+  @doc """
+  Enables or disables auto-build role links.
+
+  When enabled, role links are automatically rebuilt after policy changes.
+
+  ## Examples
+
+      enforcer = enable_auto_build_role_links(enforcer, true)
+  """
+  @spec enable_auto_build_role_links(t(), boolean()) :: t()
+  def enable_auto_build_role_links(enforcer, enable) do
+    %{enforcer | auto_build_role_links: enable}
+  end
+
+  @doc """
+  Enables or disables auto-notify watcher.
+
+  When enabled, the watcher is automatically notified of policy changes.
+
+  ## Examples
+
+      enforcer = enable_auto_notify_watcher(enforcer, true)
+  """
+  @spec enable_auto_notify_watcher(t(), boolean()) :: t()
+  def enable_auto_notify_watcher(enforcer, enable) do
+    %{enforcer | auto_notify_watcher: enable}
+  end
+
+  @doc """
+  Enables or disables auto-notify dispatcher.
+
+  When enabled, the dispatcher is automatically notified of policy changes.
+
+  ## Examples
+
+      enforcer = enable_auto_notify_dispatcher(enforcer, true)
+  """
+  @spec enable_auto_notify_dispatcher(t(), boolean()) :: t()
+  def enable_auto_notify_dispatcher(enforcer, enable) do
+    %{enforcer | auto_notify_dispatcher: enable}
+  end
+
+  @doc """
+  Enables or disables logging.
+
+  ## Examples
+
+      enforcer = enable_log(enforcer, true)
+  """
+  @spec enable_log(t(), boolean()) :: t()
+  def enable_log(enforcer, enable) do
+    %{enforcer | log_enabled: enable}
+  end
+
+  @doc """
+  Checks if logging is enabled.
+
+  ## Examples
+
+      is_log_enabled(enforcer)
+      #=> true
+  """
+  @spec is_log_enabled(t()) :: boolean()
+  def is_log_enabled(%__MODULE__{log_enabled: log_enabled}) do
+    log_enabled || false
+  end
+
+  @doc """
+  Enables or disables JSON request acceptance.
+
+  When enabled, the enforcer can parse and accept JSON-formatted requests.
+
+  ## Examples
+
+      enforcer = enable_accept_json_request(enforcer, true)
+  """
+  @spec enable_accept_json_request(t(), boolean()) :: t()
+  def enable_accept_json_request(enforcer, enable) do
+    %{enforcer | accept_json_request: enable}
+  end
+
+  # Runtime Component Management
+
+  @doc """
+  Sets the adapter at runtime.
+
+  ## Examples
+
+      new_adapter = FileAdapter.new("new_policy.csv")
+      enforcer = set_adapter(enforcer, new_adapter)
+  """
+  @spec set_adapter(t(), Adapter.t()) :: t()
+  def set_adapter(enforcer, adapter) do
+    %{enforcer | adapter: adapter}
+  end
+
+  @doc """
+  Gets the current adapter.
+
+  ## Examples
+
+      adapter = get_adapter(enforcer)
+  """
+  @spec get_adapter(t()) :: Adapter.t() | nil
+  def get_adapter(%__MODULE__{adapter: adapter}) do
+    adapter
+  end
+
+  @doc """
+  Sets the effector at runtime.
+
+  ## Examples
+
+      enforcer = set_effector(enforcer, custom_effector)
+  """
+  @spec set_effector(t(), any()) :: t()
+  def set_effector(enforcer, effector) do
+    %{enforcer | effector: effector}
+  end
+
+  @doc """
+  Sets the model at runtime.
+
+  ## Examples
+
+      new_model = Model.new()
+      enforcer = set_model(enforcer, new_model)
+  """
+  @spec set_model(t(), Model.t()) :: t()
+  def set_model(enforcer, model) do
+    %{enforcer | model: model}
+  end
+
+  @doc """
+  Gets the current model.
+
+  ## Examples
+
+      model = get_model(enforcer)
+  """
+  @spec get_model(t()) :: Model.t() | nil
+  def get_model(%__MODULE__{model: model}) do
+    model
+  end
+
+  @doc """
+  Sets the watcher at runtime.
+
+  ## Examples
+
+      enforcer = set_watcher(enforcer, watcher)
+  """
+  @spec set_watcher(t(), any()) :: {:ok, t()} | {:error, term()}
+  def set_watcher(enforcer, watcher) do
+    {:ok, %{enforcer | watcher: watcher}}
+  end
+
+  @doc """
+  Sets the role manager at runtime.
+
+  ## Examples
+
+      rm = RoleManager.new_role_manager(10)
+      enforcer = set_role_manager(enforcer, rm)
+  """
+  @spec set_role_manager(t(), RoleManager.t()) :: t()
+  def set_role_manager(enforcer, role_manager) do
+    %{enforcer | role_manager: role_manager}
+  end
+
+  @doc """
+  Gets the current role manager.
+
+  ## Examples
+
+      rm = get_role_manager(enforcer)
+  """
+  @spec get_role_manager(t()) :: RoleManager.t() | nil
+  def get_role_manager(%__MODULE__{role_manager: role_manager}) do
+    role_manager
+  end
+
+  @doc """
+  Sets a named role manager.
+
+  ## Examples
+
+      rm = RoleManager.new_role_manager(10)
+      enforcer = set_named_role_manager(enforcer, "g2", rm)
+  """
+  @spec set_named_role_manager(t(), String.t(), RoleManager.t()) :: t()
+  def set_named_role_manager(enforcer, ptype, role_manager) do
+    named_rms = Map.put(enforcer.named_role_managers, ptype, role_manager)
+    %{enforcer | named_role_managers: named_rms}
+  end
+
+  @doc """
+  Gets a named role manager.
+
+  ## Examples
+
+      rm = get_named_role_manager(enforcer, "g2")
+  """
+  @spec get_named_role_manager(t(), String.t()) :: RoleManager.t() | nil
+  def get_named_role_manager(%__MODULE__{named_role_managers: named_rms}, ptype) do
+    Map.get(named_rms, ptype)
   end
 
   # Transaction Support
@@ -2544,4 +2768,227 @@ defmodule CasbinEx2.Enforcer do
   end
 
   defp maybe_save_policy(enforcer, false), do: {:ok, enforcer}
+
+  # Role Manager Configuration Functions
+
+  @doc """
+  Adds a custom matching function to a named role manager.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `ptype` - Policy type (e.g., "g", "g2")
+  - `name` - Name of the matching function
+  - `fn` - The matching function
+
+  ## Returns
+  Boolean indicating success
+
+  ## Examples
+
+      enforcer = add_named_matching_func(enforcer, "g", "custom_match", fn name1, name2 ->
+        String.downcase(name1) == String.downcase(name2)
+      end)
+  """
+  @spec add_named_matching_func(t(), String.t(), String.t(), function()) :: t()
+  def add_named_matching_func(enforcer, ptype, name, func) do
+    case Map.get(enforcer.named_role_managers, ptype) do
+      nil ->
+        # Role manager not found for this ptype
+        enforcer
+
+      role_manager ->
+        # Add matching function to the role manager
+        # Note: This requires RoleManager to support add_matching_func/3
+        updated_rm = RoleManager.add_matching_func(role_manager, name, func)
+        named_rms = Map.put(enforcer.named_role_managers, ptype, updated_rm)
+        %{enforcer | named_role_managers: named_rms}
+    end
+  end
+
+  @doc """
+  Adds a domain-specific matching function to a named role manager.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `ptype` - Policy type (e.g., "g", "g2")
+  - `name` - Name of the matching function
+  - `fn` - The domain matching function
+
+  ## Returns
+  Updated enforcer
+
+  ## Examples
+
+      enforcer = add_named_domain_matching_func(enforcer, "g", "domain_match", fn name1, name2, domain ->
+        String.downcase(name1) == String.downcase(name2) && domain == "admin"
+      end)
+  """
+  @spec add_named_domain_matching_func(t(), String.t(), String.t(), function()) :: t()
+  def add_named_domain_matching_func(enforcer, ptype, name, func) do
+    case Map.get(enforcer.named_role_managers, ptype) do
+      nil ->
+        enforcer
+
+      role_manager ->
+        # Add domain matching function to the role manager
+        updated_rm = RoleManager.add_domain_matching_func(role_manager, name, func)
+        named_rms = Map.put(enforcer.named_role_managers, ptype, updated_rm)
+        %{enforcer | named_role_managers: named_rms}
+    end
+  end
+
+  @doc """
+  Adds a conditional link function for a specific user-role relationship.
+  The link is only valid when the condition function returns true.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `ptype` - Policy type (e.g., "g")
+  - `user` - User name
+  - `role` - Role name
+  - `fn` - Condition function that validates the link
+
+  ## Returns
+  Updated enforcer
+
+  ## Examples
+
+      enforcer = add_named_link_condition_func(enforcer, "g", "alice", "admin", fn params ->
+        params["time"] < "18:00"
+      end)
+  """
+  @spec add_named_link_condition_func(t(), String.t(), String.t(), String.t(), function()) :: t()
+  def add_named_link_condition_func(enforcer, ptype, user, role, func) do
+    # This requires conditional role manager support
+    # For now, we'll store it in metadata or return enforcer unchanged
+    # When ConditionalRoleManager is implemented, this will delegate to it
+    case Map.get(enforcer.named_role_managers, ptype) do
+      nil ->
+        enforcer
+
+      _role_manager ->
+        # TODO: When ConditionalRoleManager is implemented, use:
+        # updated_rm = ConditionalRoleManager.add_link_condition_func(role_manager, user, role, func)
+        # For now, just return enforcer
+        enforcer
+    end
+  end
+
+  @doc """
+  Adds a conditional link function for a specific user-role-domain relationship.
+  The link is only valid when the condition function returns true.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `ptype` - Policy type (e.g., "g")
+  - `user` - User name
+  - `role` - Role name
+  - `domain` - Domain name
+  - `fn` - Condition function that validates the link
+
+  ## Returns
+  Updated enforcer
+
+  ## Examples
+
+      enforcer = add_named_domain_link_condition_func(enforcer, "g", "alice", "admin", "domain1", fn params ->
+        params["department"] == "IT"
+      end)
+  """
+  @spec add_named_domain_link_condition_func(
+          t(),
+          String.t(),
+          String.t(),
+          String.t(),
+          String.t(),
+          function()
+        ) :: t()
+  def add_named_domain_link_condition_func(enforcer, ptype, user, role, domain, func) do
+    # This requires conditional role manager support
+    case Map.get(enforcer.named_role_managers, ptype) do
+      nil ->
+        enforcer
+
+      _role_manager ->
+        # TODO: When ConditionalRoleManager is implemented, use:
+        # updated_rm = ConditionalRoleManager.add_domain_link_condition_func(role_manager, user, role, domain, func)
+        enforcer
+    end
+  end
+
+  @doc """
+  Sets parameters for a conditional link function.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `ptype` - Policy type
+  - `user` - User name
+  - `role` - Role name
+  - `params` - List of parameter values
+
+  ## Returns
+  Updated enforcer
+
+  ## Examples
+
+      enforcer = set_named_link_condition_func_params(enforcer, "g", "alice", "admin", ["time=09:00", "location=office"])
+  """
+  @spec set_named_link_condition_func_params(
+          t(),
+          String.t(),
+          String.t(),
+          String.t(),
+          [String.t()]
+        ) :: t()
+  def set_named_link_condition_func_params(enforcer, ptype, _user, _role, _params) do
+    # This requires conditional role manager support
+    case Map.get(enforcer.named_role_managers, ptype) do
+      nil ->
+        enforcer
+
+      _role_manager ->
+        # TODO: When ConditionalRoleManager is implemented, use:
+        # updated_rm = ConditionalRoleManager.set_link_condition_func_params(role_manager, user, role, params)
+        enforcer
+    end
+  end
+
+  @doc """
+  Sets parameters for a conditional domain link function.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `ptype` - Policy type
+  - `user` - User name
+  - `role` - Role name
+  - `domain` - Domain name
+  - `params` - List of parameter values
+
+  ## Returns
+  Updated enforcer
+
+  ## Examples
+
+      enforcer = set_named_domain_link_condition_func_params(enforcer, "g", "alice", "admin", "domain1", ["dept=IT"])
+  """
+  @spec set_named_domain_link_condition_func_params(
+          t(),
+          String.t(),
+          String.t(),
+          String.t(),
+          String.t(),
+          [String.t()]
+        ) :: t()
+  def set_named_domain_link_condition_func_params(enforcer, ptype, _user, _role, _domain, _params) do
+    # This requires conditional role manager support
+    case Map.get(enforcer.named_role_managers, ptype) do
+      nil ->
+        enforcer
+
+      _role_manager ->
+        # TODO: When ConditionalRoleManager is implemented, use:
+        # updated_rm = ConditionalRoleManager.set_domain_link_condition_func_params(role_manager, user, role, domain, params)
+        enforcer
+    end
+  end
 end

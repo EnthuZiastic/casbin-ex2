@@ -1201,4 +1201,89 @@ defmodule CasbinEx2.RBAC do
     |> Enum.map(fn [_user, role | _rest] -> role end)
     |> Enum.uniq()
   end
+
+  @doc """
+  Gets implicit object patterns for a user in a domain for a specific action.
+
+  Returns all object patterns that the user has access to (directly or through roles)
+  for the specified action in the specified domain.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `user` - User name
+  - `domain` - Domain name (use "" for default domain)
+  - `action` - Action name (e.g., "read", "write")
+
+  ## Returns
+  List of object patterns
+
+  ## Examples
+
+      # p, alice, /data1/*, read
+      # p, admin, /data2/*, write
+      # g, alice, admin
+
+      get_implicit_object_patterns_for_user(enforcer, "alice", "", "read")
+      # Returns: ["/data1/*"]
+
+      get_implicit_object_patterns_for_user(enforcer, "alice", "", "write")
+      # Returns: ["/data2/*"] (through admin role)
+  """
+  @spec get_implicit_object_patterns_for_user(Enforcer.t(), String.t(), String.t(), String.t()) ::
+          {:ok, [String.t()]} | {:error, term()}
+  def get_implicit_object_patterns_for_user(
+        %Enforcer{policies: policies} = enforcer,
+        user,
+        domain,
+        action
+      ) do
+    # Get all implicit roles for the user in the domain
+    roles_result = get_implicit_roles_for_user(enforcer, user, domain)
+
+    roles =
+      case roles_result do
+        {:ok, role_list} -> role_list
+        {:error, _} -> []
+      end
+
+    # Create list of subjects (user + all their roles)
+    subjects = [user | roles]
+
+    # Get all p policies
+    p_policies = Map.get(policies, "p", [])
+
+    # Find all object patterns for the subjects that match the action and domain
+    patterns =
+      p_policies
+      |> Enum.filter(fn policy ->
+        case policy do
+          # Format: [sub, obj, act] for default domain
+          [sub, _obj, act] when domain == "" ->
+            sub in subjects and (act == action or act == "*")
+
+          # Format: [sub, obj, act, dom] for specific domain
+          [sub, _obj, act, dom] ->
+            sub in subjects and dom == domain and (act == action or act == "*")
+
+          # Format with more fields (e.g., [sub, dom, obj, act])
+          [sub, dom, _obj, act] ->
+            sub in subjects and dom == domain and (act == action or act == "*")
+
+          _ ->
+            false
+        end
+      end)
+      |> Enum.map(fn policy ->
+        case policy do
+          [_sub, obj, _act] -> obj
+          [_sub, obj, _act, _dom] -> obj
+          [_sub, _dom, obj, _act] -> obj
+          _ -> nil
+        end
+      end)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    {:ok, patterns}
+  end
 end

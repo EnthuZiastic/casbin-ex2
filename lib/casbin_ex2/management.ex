@@ -480,6 +480,18 @@ defmodule CasbinEx2.Management do
   end
 
   @doc """
+  Adds multiple policies without triggering watcher notifications.
+  Does not filter duplicates (use self_add_policies_ex for that).
+  """
+  def self_add_policies(%Enforcer{} = enforcer, sec, ptype, rules) do
+    case sec do
+      "p" -> add_named_policies(enforcer, ptype, rules)
+      "g" -> add_named_grouping_policies(enforcer, ptype, rules)
+      _ -> {:error, "invalid section type, must be 'p' or 'g'"}
+    end
+  end
+
+  @doc """
   Removes a policy without triggering watcher notifications.
   Useful in distributed scenarios where the node updates its own policies.
   """
@@ -492,6 +504,41 @@ defmodule CasbinEx2.Management do
   end
 
   @doc """
+  Removes multiple policies without triggering watcher notifications.
+  Useful in distributed scenarios where the node updates its own policies.
+  """
+  def self_remove_policies(%Enforcer{} = enforcer, sec, ptype, rules) do
+    case sec do
+      "p" -> remove_named_policies(enforcer, ptype, rules)
+      "g" -> remove_named_grouping_policies(enforcer, ptype, rules)
+      _ -> {:error, "invalid section type, must be 'p' or 'g'"}
+    end
+  end
+
+  @doc """
+  Removes filtered policies without triggering watcher notifications.
+  Useful in distributed scenarios where the node updates its own policies.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `sec` - Section type ("p" or "g")
+  - `ptype` - Policy type
+  - `field_index` - Index of the field to match (0-based)
+  - `field_values` - Values to match
+
+  ## Examples
+
+      {:ok, enforcer} = self_remove_filtered_policy(enforcer, "p", "p", 0, ["alice"])
+  """
+  def self_remove_filtered_policy(%Enforcer{} = enforcer, sec, ptype, field_index, field_values) do
+    case sec do
+      "p" -> remove_filtered_named_policy(enforcer, ptype, field_index, field_values)
+      "g" -> remove_filtered_named_grouping_policy(enforcer, ptype, field_index, field_values)
+      _ -> {:error, "invalid section type, must be 'p' or 'g'"}
+    end
+  end
+
+  @doc """
   Updates a policy without triggering watcher notifications.
   Useful in distributed scenarios where the node updates its own policies.
   """
@@ -499,6 +546,18 @@ defmodule CasbinEx2.Management do
     case sec do
       "p" -> update_named_policy(enforcer, ptype, old_rule, new_rule)
       "g" -> update_named_grouping_policy(enforcer, ptype, old_rule, new_rule)
+      _ -> {:error, "invalid section type, must be 'p' or 'g'"}
+    end
+  end
+
+  @doc """
+  Updates multiple policies without triggering watcher notifications.
+  Useful in distributed scenarios where the node updates its own policies.
+  """
+  def self_update_policies(%Enforcer{} = enforcer, sec, ptype, old_rules, new_rules) do
+    case sec do
+      "p" -> update_named_policies(enforcer, ptype, old_rules, new_rules)
+      "g" -> update_named_grouping_policies(enforcer, ptype, old_rules, new_rules)
       _ -> {:error, "invalid section type, must be 'p' or 'g'"}
     end
   end
