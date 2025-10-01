@@ -688,4 +688,505 @@ defmodule CasbinEx2.RBAC do
       if domain == "", do: [user, role], else: [user, role, domain]
     end)
   end
+
+  @doc """
+  Gets implicit roles for a user by named role definition.
+
+  Compared to `get_implicit_roles_for_user/3`, this function retrieves roles
+  from a specific named role definition (ptype).
+
+  ## Examples
+
+      # g, alice, role:admin
+      # g, role:admin, role:user
+      # g2, alice, role:admin2
+
+      # Get roles from "g2"
+      get_named_implicit_roles_for_user(enforcer, "g2", "alice")
+      # Returns: ["role:admin2"]
+  """
+  def get_named_implicit_roles_for_user(
+        %Enforcer{} = enforcer,
+        _ptype,
+        name,
+        domain \\ ""
+      ) do
+    # Get direct roles first
+    direct_roles = get_roles_for_user(enforcer, name, domain)
+
+    # Recursively get roles for each direct role (transitive closure)
+    all_roles =
+      Enum.reduce(direct_roles, direct_roles, fn role, acc ->
+        indirect_roles = get_roles_for_user(enforcer, role, domain)
+        Enum.uniq(acc ++ indirect_roles)
+      end)
+
+    all_roles
+  end
+
+  @doc """
+  Gets implicit users for a role.
+
+  Returns all users that have the given role, including indirect assignments
+  through role hierarchies.
+
+  ## Examples
+
+      # p, admin, data1, read
+      # g, alice, admin
+      # g, bob, manager
+      # g, manager, admin
+
+      get_implicit_users_for_role(enforcer, "admin")
+      # Returns: ["alice", "bob"]
+  """
+  def get_implicit_users_for_role(
+        %Enforcer{} = enforcer,
+        name,
+        domain \\ ""
+      ) do
+    # Get direct users for the role
+    direct_users = get_users_for_role(enforcer, name, domain)
+
+    # Get all roles and find which ones lead to our target role
+    all_roles = Management.get_all_roles(enforcer)
+
+    # Find roles that have our target role (recursively)
+    indirect_users =
+      Enum.flat_map(all_roles, fn role ->
+        # Check if this role has our target role
+        roles_for_this_role = get_roles_for_user(enforcer, role, domain)
+
+        if name in roles_for_this_role do
+          # This role leads to our target, get its users
+          get_users_for_role(enforcer, role, domain)
+        else
+          []
+        end
+      end)
+
+    Enum.uniq(direct_users ++ indirect_users)
+  end
+
+  @doc """
+  Gets implicit permissions for a user or role by named policy.
+
+  Compared to `get_implicit_permissions_for_user/3`, this function retrieves
+  permissions for a specific named policy (ptype) and grouping policy (gtype).
+
+  ## Examples
+
+      # p, admin, data1, read
+      # p2, admin, create
+      # g, alice, admin
+
+      # Get permissions from "p2"
+      get_named_implicit_permissions_for_user(enforcer, "p2", "g", "alice")
+      # Returns: [["admin", "create"]]
+  """
+  def get_named_implicit_permissions_for_user(
+        %Enforcer{policies: policies} = enforcer,
+        ptype,
+        gtype,
+        user,
+        domain \\ ""
+      ) do
+    # Get implicit roles for the user using the specified gtype
+    roles =
+      case get_named_implicit_roles_for_user(enforcer, gtype, user, domain) do
+        {:error, _reason} -> []
+        roles when is_list(roles) -> roles
+      end
+
+    # Build set of policy roles (user + inherited roles)
+    policy_roles = MapSet.new([user | roles])
+
+    # Get policies from the specified ptype
+    policy_list = Map.get(policies, ptype, [])
+
+    # Filter policies by domain if specified
+    filtered_policies =
+      if domain == "" do
+        # No domain filtering
+        Enum.filter(policy_list, fn [sub | _rest] ->
+          MapSet.member?(policy_roles, sub)
+        end)
+      else
+        # With domain filtering - domain is typically the last element
+        Enum.filter(policy_list, fn rule ->
+          case rule do
+            [sub | _rest] when length(rule) > 2 ->
+              domain_field = List.last(rule)
+              MapSet.member?(policy_roles, sub) and domain_field == domain
+
+            _ ->
+              false
+          end
+        end)
+      end
+
+    filtered_policies
+  end
+
+  @doc """
+  Gets implicit users for a permission.
+
+  Returns all users (not roles) that have the specified permission,
+  including users who have it through role inheritance.
+
+  ## Examples
+
+      # p, admin, data1, read
+      # p, bob, data1, read
+      # g, alice, admin
+
+      get_implicit_users_for_permission(enforcer, "data1", "read")
+      # Returns: ["alice", "bob"]
+
+  Note: Only users will be returned, roles will be excluded.
+  """
+  def get_implicit_users_for_permission(%Enforcer{} = enforcer, permission)
+      when is_list(permission) do
+    # Get all subjects from policies
+    all_subjects = Management.get_all_subjects(enforcer)
+
+    # Get all roles from grouping policies
+    all_roles = Management.get_all_roles(enforcer)
+    role_set = MapSet.new(all_roles)
+
+    # Filter to only actual users (not roles)
+    users = Enum.reject(all_subjects, fn subject -> MapSet.member?(role_set, subject) end)
+
+    # Check which users have the permission (directly or through roles)
+    Enum.filter(users, fn user ->
+      has_permission_for_user(enforcer, user, permission)
+    end)
+  end
+
+  @doc """
+  Gets all domains for a user.
+
+  Returns all domains where the user has role assignments.
+
+  ## Examples
+
+      # g, alice, admin, domain1
+      # g, alice, user, domain2
+
+      get_domains_for_user(enforcer, "alice")
+      # Returns: ["domain1", "domain2"]
+  """
+  def get_domains_for_user(%Enforcer{grouping_policies: grouping_policies}, user) do
+    # Get all g policies
+    g_policies = Map.get(grouping_policies, "g", [])
+
+    # Extract domains from policies where user is the subject
+    g_policies
+    |> Enum.filter(fn policy ->
+      case policy do
+        [^user, _role, _domain | _rest] -> true
+        _ -> false
+      end
+    end)
+    |> Enum.map(fn [_user, _role, domain | _rest] -> domain end)
+    |> Enum.uniq()
+  end
+
+  @doc """
+  Gets implicit resources for a user.
+
+  Returns all policies that the user has access to in the domain,
+  including through role inheritance.
+
+  ## Examples
+
+      # p, alice, data1, read
+      # p, admin, data2, write
+      # g, alice, admin
+
+      get_implicit_resources_for_user(enforcer, "alice")
+      # Returns: [["alice", "data1", "read"], ["alice", "data2", "write"]]
+  """
+  def get_implicit_resources_for_user(
+        %Enforcer{} = enforcer,
+        user,
+        domain \\ ""
+      ) do
+    # Get implicit permissions for the user
+    permissions = get_implicit_permissions_for_user(enforcer, user, domain)
+
+    # Process permissions to expand role-based resources
+    Enum.flat_map(permissions, fn permission ->
+      [subject | rest] = permission
+
+      if subject == user do
+        # Direct permission for user
+        [permission]
+      else
+        # Permission through a role - expand with user
+        # Get all users who have this role
+        implicit_users = get_implicit_users_for_role(enforcer, subject, domain)
+
+        if user in implicit_users do
+          # Create permission with user as subject
+          [[user | rest]]
+        else
+          []
+        end
+      end
+    end)
+    |> Enum.uniq()
+  end
+
+  @doc """
+  Gets allowed object conditions for a user.
+
+  Returns object conditions that the user can access for a specific action.
+  The prefix parameter is used to extract the condition part from the object.
+
+  ## Examples
+
+      # p, alice, r.obj.id == 1, read
+      # p, alice, r.obj.id == 2, read
+
+      get_allowed_object_conditions(enforcer, "alice", "read", "r.obj.")
+      # Returns: {:ok, ["id == 1", "id == 2"]}
+
+  Returns `{:error, :empty_condition}` if no conditions are found.
+  Returns `{:error, :invalid_prefix}` if an object doesn't have the required prefix.
+  """
+  def get_allowed_object_conditions(
+        %Enforcer{} = enforcer,
+        user,
+        action,
+        prefix
+      ) do
+    # Get implicit permissions for the user
+    permissions = get_implicit_permissions_for_user(enforcer, user)
+
+    # Extract object conditions for the specified action
+    conditions =
+      permissions
+      |> Enum.filter(fn permission ->
+        # permission format: [subject, object, action, ...]
+        case permission do
+          [_sub, _obj, act | _rest] -> act == action
+          _ -> false
+        end
+      end)
+      |> Enum.map(fn permission ->
+        [_sub, obj | _rest] = permission
+
+        if String.starts_with?(obj, prefix) do
+          {:ok, String.trim_leading(obj, prefix)}
+        else
+          {:error, :invalid_prefix}
+        end
+      end)
+
+    # Check for errors
+    if Enum.any?(conditions, fn
+         {:error, :invalid_prefix} -> true
+         _ -> false
+       end) do
+      {:error, :invalid_prefix}
+    else
+      # Extract successful conditions
+      result = Enum.map(conditions, fn {:ok, cond} -> cond end)
+
+      if Enum.empty?(result) do
+        {:error, :empty_condition}
+      else
+        {:ok, result}
+      end
+    end
+  end
+
+  @doc """
+  Gets implicit users for a resource.
+
+  Returns all users (with their full permission rules) who have access
+  to the specified resource, including through role inheritance.
+  Uses the default "g" grouping policy.
+
+  ## Examples
+
+      # p, admin, data1, read
+      # p, bob, data2, write
+      # g, alice, admin
+
+      get_implicit_users_for_resource(enforcer, "data1")
+      # Returns: [["alice", "data1", "read"]]
+  """
+  def get_implicit_users_for_resource(%Enforcer{} = enforcer, resource) do
+    get_named_implicit_users_for_resource(enforcer, "g", resource)
+  end
+
+  @doc """
+  Gets implicit users for a resource with named policy support.
+
+  Returns all users who have access to the resource through the specified
+  named grouping policy (ptype).
+
+  ## Examples
+
+      # p, admin_group, admin_data, *
+      # g, admin, admin_group
+      # g2, app, admin_data
+
+      get_named_implicit_users_for_resource(enforcer, "g2", "admin_data")
+      # Returns users with access through g2 relationships
+  """
+  def get_named_implicit_users_for_resource(
+        %Enforcer{policies: policies, role_manager: role_manager} = enforcer,
+        ptype,
+        resource
+      ) do
+    # Get all roles
+    all_roles = Management.get_all_roles(enforcer)
+    role_set = MapSet.new(all_roles)
+
+    # Get policies from the specified ptype (g, g2, etc.)
+    ptype_policies = Management.get_named_grouping_policy(enforcer, ptype)
+
+    # Build map of resource accessible resource types
+    resource_accessible_types =
+      Enum.reduce(ptype_policies, MapSet.new(), fn policy, acc ->
+        case policy do
+          [^resource, resource_type | _rest] -> MapSet.put(acc, resource_type)
+          _ -> acc
+        end
+      end)
+
+    # Get all p policies
+    p_policies = Map.get(policies, "p", [])
+
+    # Find permissions for the resource
+    permissions =
+      Enum.flat_map(p_policies, fn rule ->
+        case rule do
+          [sub, obj | _rest] ->
+            # Check if this policy is for the resource or accessible resource type
+            if obj == resource or MapSet.member?(resource_accessible_types, obj) do
+              if MapSet.member?(role_set, sub) do
+                # Subject is a role - get users for this role
+                users =
+                  case role_manager do
+                    nil -> []
+                    rm -> CasbinEx2.RoleManager.get_users(rm, sub, "")
+                  end
+
+                # Create permission for each user
+                Enum.map(users, fn user ->
+                  [user | tl(rule)]
+                end)
+              else
+                # Subject is a user - include directly
+                [rule]
+              end
+            else
+              []
+            end
+
+          _ ->
+            []
+        end
+      end)
+
+    # Remove duplicates
+    Enum.uniq(permissions)
+  end
+
+  @doc """
+  Gets implicit users for a resource by domain.
+
+  Returns all users who have access to the specified resource in the
+  specified domain, including through role inheritance.
+
+  ## Examples
+
+      # p, admin, data1, read, domain1
+      # p, alice, data2, read, domain1
+      # g, bob, admin, domain1
+
+      get_implicit_users_for_resource_by_domain(enforcer, "data1", "domain1")
+      # Returns: [["bob", "data1", "read", "domain1"]]
+  """
+  def get_implicit_users_for_resource_by_domain(
+        %Enforcer{policies: policies, role_manager: role_manager} = enforcer,
+        resource,
+        domain
+      ) do
+    # Get all roles in the domain
+    all_roles_in_domain = get_all_roles_by_domain(enforcer, domain)
+    role_set = MapSet.new(all_roles_in_domain)
+
+    # Get all p policies
+    p_policies = Map.get(policies, "p", [])
+
+    # Find permissions for the resource in the domain
+    permissions =
+      Enum.flat_map(p_policies, fn rule ->
+        case rule do
+          # Assuming format: [sub, obj, act, domain]
+          [sub, obj, _act, dom | _rest] ->
+            if obj == resource and dom == domain do
+              if MapSet.member?(role_set, sub) do
+                # Subject is a role - get users for this role in domain
+                users =
+                  case role_manager do
+                    nil -> []
+                    rm -> CasbinEx2.RoleManager.get_users(rm, sub, domain)
+                  end
+
+                # Create permission for each user
+                Enum.map(users, fn user ->
+                  List.replace_at(rule, 0, user)
+                end)
+              else
+                # Subject is a user - include directly
+                [rule]
+              end
+            else
+              []
+            end
+
+          _ ->
+            []
+        end
+      end)
+
+    # Remove duplicates
+    Enum.uniq(permissions)
+  end
+
+  @doc """
+  Gets all roles by domain.
+
+  Returns all roles that exist in the specified domain.
+
+  ## Examples
+
+      # g, alice, admin, domain1
+      # g, bob, user, domain1
+      # g, charlie, moderator, domain2
+
+      get_all_roles_by_domain(enforcer, "domain1")
+      # Returns: ["admin", "user"]
+  """
+  def get_all_roles_by_domain(%Enforcer{grouping_policies: grouping_policies}, domain) do
+    # Get all g policies
+    g_policies = Map.get(grouping_policies, "g", [])
+
+    # Extract roles from policies matching the domain
+    g_policies
+    |> Enum.filter(fn policy ->
+      case policy do
+        [_user, _role, dom | _rest] -> dom == domain
+        _ -> false
+      end
+    end)
+    |> Enum.map(fn [_user, role | _rest] -> role end)
+    |> Enum.uniq()
+  end
 end
