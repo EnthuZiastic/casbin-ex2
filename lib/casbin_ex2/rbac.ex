@@ -701,6 +701,14 @@ defmodule CasbinEx2.RBAC do
     end)
   end
 
+  defp matches_domain_policy?([sub | _rest] = rule, policy_roles, domain)
+       when length(rule) > 2 do
+    domain_field = List.last(rule)
+    MapSet.member?(policy_roles, sub) and domain_field == domain
+  end
+
+  defp matches_domain_policy?(_rule, _policy_roles, _domain), do: false
+
   @doc """
   Gets implicit roles for a user by named role definition.
 
@@ -825,16 +833,7 @@ defmodule CasbinEx2.RBAC do
         end)
       else
         # With domain filtering - domain is typically the last element
-        Enum.filter(policy_list, fn rule ->
-          case rule do
-            [sub | _rest] when length(rule) > 2 ->
-              domain_field = List.last(rule)
-              MapSet.member?(policy_roles, sub) and domain_field == domain
-
-            _ ->
-              false
-          end
-        end)
+        Enum.filter(policy_list, &matches_domain_policy?(&1, policy_roles, domain))
       end
 
     filtered_policies
@@ -928,26 +927,25 @@ defmodule CasbinEx2.RBAC do
     permissions = get_implicit_permissions_for_user_with_subject(enforcer, user, domain)
 
     # Process permissions to expand role-based resources
-    Enum.flat_map(permissions, fn permission ->
-      [subject | rest] = permission
-
-      if subject == user do
-        # Direct permission for user
-        [permission]
-      else
-        # Permission through a role - expand with user
-        # Get all users who have this role
-        implicit_users = get_implicit_users_for_role(enforcer, subject, domain)
-
-        if user in implicit_users do
-          # Create permission with user as subject
-          [[user | rest]]
-        else
-          []
-        end
-      end
-    end)
+    permissions
+    |> Enum.flat_map(&expand_permission_for_user(&1, user, enforcer, domain))
     |> Enum.uniq()
+  end
+
+  defp expand_permission_for_user([subject | rest] = permission, user, enforcer, domain) do
+    if subject == user do
+      # Direct permission for user
+      [permission]
+    else
+      # Permission through a role - expand with user
+      implicit_users = get_implicit_users_for_role(enforcer, subject, domain)
+
+      if user in implicit_users do
+        [[user | rest]]
+      else
+        []
+      end
+    end
   end
 
   @doc """
@@ -1074,40 +1072,48 @@ defmodule CasbinEx2.RBAC do
     p_policies = Map.get(policies, "p", [])
 
     # Find permissions for the resource
-    permissions =
-      Enum.flat_map(p_policies, fn rule ->
-        case rule do
-          [sub, obj | _rest] ->
-            # Check if this policy is for the resource or accessible resource type
-            if obj == resource or MapSet.member?(resource_accessible_types, obj) do
-              if MapSet.member?(role_set, sub) do
-                # Subject is a role - get users for this role
-                users =
-                  case role_manager do
-                    nil -> []
-                    rm -> CasbinEx2.RoleManager.get_users(rm, sub, "")
-                  end
-
-                # Create permission for each user
-                Enum.map(users, fn user ->
-                  [user | tl(rule)]
-                end)
-              else
-                # Subject is a user - include directly
-                [rule]
-              end
-            else
-              []
-            end
-
-          _ ->
-            []
-        end
-      end)
-
-    # Remove duplicates
-    Enum.uniq(permissions)
+    p_policies
+    |> Enum.flat_map(
+      &process_policy_for_resource(
+        &1,
+        resource,
+        resource_accessible_types,
+        role_set,
+        role_manager
+      )
+    )
+    |> Enum.uniq()
   end
+
+  defp process_policy_for_resource(
+         [sub, obj | _rest] = rule,
+         resource,
+         resource_accessible_types,
+         role_set,
+         role_manager
+       ) do
+    if obj == resource or MapSet.member?(resource_accessible_types, obj) do
+      expand_policy_subjects(rule, sub, role_set, role_manager)
+    else
+      []
+    end
+  end
+
+  defp process_policy_for_resource(_rule, _resource, _types, _roles, _rm), do: []
+
+  defp expand_policy_subjects(rule, sub, role_set, role_manager) do
+    if MapSet.member?(role_set, sub) do
+      # Subject is a role - get users for this role
+      users = get_users_for_role_safe(role_manager, sub)
+      Enum.map(users, fn user -> [user | tl(rule)] end)
+    else
+      # Subject is a user - include directly
+      [rule]
+    end
+  end
+
+  defp get_users_for_role_safe(nil, _sub), do: []
+  defp get_users_for_role_safe(rm, sub), do: CasbinEx2.RoleManager.get_users(rm, sub, "")
 
   @doc """
   Gets implicit users for a resource by domain.
@@ -1137,40 +1143,42 @@ defmodule CasbinEx2.RBAC do
     p_policies = Map.get(policies, "p", [])
 
     # Find permissions for the resource in the domain
-    permissions =
-      Enum.flat_map(p_policies, fn rule ->
-        case rule do
-          # Assuming format: [sub, obj, act, domain]
-          [sub, obj, _act, dom | _rest] ->
-            if obj == resource and dom == domain do
-              if MapSet.member?(role_set, sub) do
-                # Subject is a role - get users for this role in domain
-                users =
-                  case role_manager do
-                    nil -> []
-                    rm -> CasbinEx2.RoleManager.get_users(rm, sub, domain)
-                  end
-
-                # Create permission for each user
-                Enum.map(users, fn user ->
-                  List.replace_at(rule, 0, user)
-                end)
-              else
-                # Subject is a user - include directly
-                [rule]
-              end
-            else
-              []
-            end
-
-          _ ->
-            []
-        end
-      end)
-
-    # Remove duplicates
-    Enum.uniq(permissions)
+    p_policies
+    |> Enum.flat_map(&process_policy_by_domain(&1, resource, domain, role_set, role_manager))
+    |> Enum.uniq()
   end
+
+  defp process_policy_by_domain(
+         [sub, obj, _act, dom | _rest] = rule,
+         resource,
+         domain,
+         role_set,
+         role_manager
+       ) do
+    if obj == resource and dom == domain do
+      expand_policy_subjects_by_domain(rule, sub, role_set, role_manager, domain)
+    else
+      []
+    end
+  end
+
+  defp process_policy_by_domain(_rule, _resource, _domain, _role_set, _role_manager), do: []
+
+  defp expand_policy_subjects_by_domain(rule, sub, role_set, role_manager, domain) do
+    if MapSet.member?(role_set, sub) do
+      # Subject is a role - get users for this role in domain
+      users = get_users_for_role_in_domain_safe(role_manager, sub, domain)
+      Enum.map(users, fn user -> List.replace_at(rule, 0, user) end)
+    else
+      # Subject is a user - include directly
+      [rule]
+    end
+  end
+
+  defp get_users_for_role_in_domain_safe(nil, _sub, _domain), do: []
+
+  defp get_users_for_role_in_domain_safe(rm, sub, domain),
+    do: CasbinEx2.RoleManager.get_users(rm, sub, domain)
 
   @doc """
   Gets all roles by domain.
@@ -1255,35 +1263,30 @@ defmodule CasbinEx2.RBAC do
     # Find all object patterns for the subjects that match the action and domain
     patterns =
       p_policies
-      |> Enum.filter(fn policy ->
-        case policy do
-          # Format: [sub, obj, act] for default domain
-          [sub, _obj, act] when domain == "" ->
-            sub in subjects and (act == action or act == "*")
-
-          # Format: [sub, obj, act, dom] for specific domain
-          [sub, _obj, act, dom] ->
-            sub in subjects and dom == domain and (act == action or act == "*")
-
-          # Format with more fields (e.g., [sub, dom, obj, act])
-          [sub, dom, _obj, act] ->
-            sub in subjects and dom == domain and (act == action or act == "*")
-
-          _ ->
-            false
-        end
-      end)
-      |> Enum.map(fn policy ->
-        case policy do
-          [_sub, obj, _act] -> obj
-          [_sub, obj, _act, _dom] -> obj
-          [_sub, _dom, obj, _act] -> obj
-          _ -> nil
-        end
-      end)
+      |> Enum.filter(&matches_action_for_subjects?(&1, subjects, action, domain))
+      |> Enum.map(&extract_object_from_policy/1)
       |> Enum.reject(&is_nil/1)
       |> Enum.uniq()
 
     {:ok, patterns}
   end
+
+  defp matches_action_for_subjects?([sub, _obj, act], subjects, action, "") do
+    sub in subjects and (act == action or act == "*")
+  end
+
+  defp matches_action_for_subjects?([sub, _obj, act, dom], subjects, action, domain) do
+    sub in subjects and dom == domain and (act == action or act == "*")
+  end
+
+  defp matches_action_for_subjects?([sub, dom, _obj, act], subjects, action, domain) do
+    sub in subjects and dom == domain and (act == action or act == "*")
+  end
+
+  defp matches_action_for_subjects?(_policy, _subjects, _action, _domain), do: false
+
+  defp extract_object_from_policy([_sub, obj, _act]), do: obj
+  defp extract_object_from_policy([_sub, obj, _act, _dom]), do: obj
+  defp extract_object_from_policy([_sub, _dom, obj, _act]), do: obj
+  defp extract_object_from_policy(_policy), do: nil
 end

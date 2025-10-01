@@ -416,11 +416,11 @@ defmodule CasbinEx2.Enforcer do
 
   ## Examples
 
-      is_log_enabled(enforcer)
+      log_enabled?(enforcer)
       #=> true
   """
-  @spec is_log_enabled(t()) :: boolean()
-  def is_log_enabled(%__MODULE__{log_enabled: log_enabled}) do
+  @spec log_enabled?(t()) :: boolean()
+  def log_enabled?(%__MODULE__{log_enabled: log_enabled}) do
     log_enabled || false
   end
 
@@ -2987,7 +2987,9 @@ defmodule CasbinEx2.Enforcer do
 
       _role_manager ->
         # TODO: When ConditionalRoleManager is implemented, use:
-        # updated_rm = ConditionalRoleManager.set_domain_link_condition_func_params(role_manager, user, role, domain, params)
+        # updated_rm = ConditionalRoleManager.set_domain_link_condition_func_params(
+        #   role_manager, user, role, domain, params
+        # )
         enforcer
     end
   end
@@ -3043,10 +3045,7 @@ defmodule CasbinEx2.Enforcer do
   """
   @spec get_field_index(t(), String.t(), String.t()) :: {:ok, integer()} | {:error, term()}
   def get_field_index(%__MODULE__{model: model}, ptype, field) do
-    case Model.get_field_index(model, ptype, field) do
-      {:ok, index} -> {:ok, index}
-      error -> error
-    end
+    Model.get_field_index(model, ptype, field)
   end
 
   @doc """
@@ -3140,23 +3139,23 @@ defmodule CasbinEx2.Enforcer do
       {:error,
        "the length of old_rules (#{length(old_rules)}) must equal the length of new_rules (#{length(new_rules)})"}
     else
-      case sec do
-        "p" ->
-          case Management.update_named_policies(enforcer, ptype, old_rules, new_rules) do
-            {:ok, updated_enforcer} -> {:ok, updated_enforcer, true}
-            {:error, reason} -> {:error, reason}
-          end
-
-        "g" ->
-          case Management.update_named_grouping_policies(enforcer, ptype, old_rules, new_rules) do
-            {:ok, updated_enforcer} -> {:ok, updated_enforcer, true}
-            {:error, reason} -> {:error, reason}
-          end
-
-        _ ->
-          {:error, "invalid section type, must be 'p' or 'g'"}
+      with {:ok, updated_enforcer} <-
+             do_update_policies(enforcer, sec, ptype, old_rules, new_rules) do
+        {:ok, updated_enforcer, true}
       end
     end
+  end
+
+  defp do_update_policies(enforcer, "p", ptype, old_rules, new_rules) do
+    Management.update_named_policies(enforcer, ptype, old_rules, new_rules)
+  end
+
+  defp do_update_policies(enforcer, "g", ptype, old_rules, new_rules) do
+    Management.update_named_grouping_policies(enforcer, ptype, old_rules, new_rules)
+  end
+
+  defp do_update_policies(_enforcer, _sec, _ptype, _old_rules, _new_rules) do
+    {:error, "invalid section type, must be 'p' or 'g'"}
   end
 
   @doc """
@@ -3182,7 +3181,7 @@ defmodule CasbinEx2.Enforcer do
           [String.t()]
         ) :: {:ok, t()} | {:error, term()}
   def remove_filtered_policy_without_notify(enforcer, sec, ptype, field_index, field_values) do
-    if length(field_values) == 0 do
+    if Enum.empty?(field_values) do
       {:error, "field_values cannot be empty"}
     else
       case sec do
@@ -3236,47 +3235,34 @@ defmodule CasbinEx2.Enforcer do
         field_index,
         field_values
       ) do
-    # Get the old rules that will be removed
-    old_rules =
-      case sec do
-        "p" ->
-          Management.get_filtered_named_policy(enforcer, ptype, field_index, field_values)
+    old_rules = get_filtered_policies_for_sec(enforcer, sec, ptype, field_index, field_values)
 
-        "g" ->
-          Management.get_filtered_named_grouping_policy(
-            enforcer,
-            ptype,
-            field_index,
-            field_values
-          )
-
-        _ ->
-          []
-      end
-
-    # Remove filtered policies
-    case remove_filtered_policy_without_notify(enforcer, sec, ptype, field_index, field_values) do
-      {:ok, updated_enforcer, _} ->
-        # Add new policies
-        case sec do
-          "p" ->
-            case Management.add_named_policies(updated_enforcer, ptype, new_rules) do
-              {:ok, final_enforcer} -> {:ok, final_enforcer, old_rules}
-              {:error, reason} -> {:error, reason}
-            end
-
-          "g" ->
-            case Management.add_named_grouping_policies(updated_enforcer, ptype, new_rules) do
-              {:ok, final_enforcer} -> {:ok, final_enforcer, old_rules}
-              {:error, reason} -> {:error, reason}
-            end
-
-          _ ->
-            {:error, "invalid section type, must be 'p' or 'g'"}
-        end
-
-      {:error, reason} ->
-        {:error, reason}
+    with {:ok, updated_enforcer, _} <-
+           remove_filtered_policy_without_notify(enforcer, sec, ptype, field_index, field_values),
+         {:ok, final_enforcer} <- add_policies_for_sec(updated_enforcer, sec, ptype, new_rules) do
+      {:ok, final_enforcer, old_rules}
     end
+  end
+
+  defp get_filtered_policies_for_sec(enforcer, "p", ptype, field_index, field_values) do
+    Management.get_filtered_named_policy(enforcer, ptype, field_index, field_values)
+  end
+
+  defp get_filtered_policies_for_sec(enforcer, "g", ptype, field_index, field_values) do
+    Management.get_filtered_named_grouping_policy(enforcer, ptype, field_index, field_values)
+  end
+
+  defp get_filtered_policies_for_sec(_enforcer, _sec, _ptype, _field_index, _field_values), do: []
+
+  defp add_policies_for_sec(enforcer, "p", ptype, rules) do
+    Management.add_named_policies(enforcer, ptype, rules)
+  end
+
+  defp add_policies_for_sec(enforcer, "g", ptype, rules) do
+    Management.add_named_grouping_policies(enforcer, ptype, rules)
+  end
+
+  defp add_policies_for_sec(_enforcer, _sec, _ptype, _rules) do
+    {:error, "invalid section type, must be 'p' or 'g'"}
   end
 end

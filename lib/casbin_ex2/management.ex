@@ -425,15 +425,7 @@ defmodule CasbinEx2.Management do
     # Update role manager for each removed policy if it's the default "g" type
     updated_enforcer =
       if ptype == "g" do
-        Enum.reduce(removed_policies, updated_enforcer, fn params, acc_enforcer ->
-          if length(params) >= 2 do
-            [user, role | _rest] = params
-            updated_rm = CasbinEx2.RoleManager.delete_link(acc_enforcer.role_manager, user, role)
-            %{acc_enforcer | role_manager: updated_rm}
-          else
-            acc_enforcer
-          end
-        end)
+        Enum.reduce(removed_policies, updated_enforcer, &update_role_manager_for_removed_policy/2)
       else
         updated_enforcer
       end
@@ -943,4 +935,14 @@ defmodule CasbinEx2.Management do
   def get_filtered_named_policy_with_matcher(_enforcer, _ptype, _matcher) do
     {:error, "matcher must be a function with arity 1"}
   end
+
+  # Private helper functions
+
+  defp update_role_manager_for_removed_policy(params, acc_enforcer) when length(params) >= 2 do
+    [user, role | _rest] = params
+    updated_rm = CasbinEx2.RoleManager.delete_link(acc_enforcer.role_manager, user, role)
+    %{acc_enforcer | role_manager: updated_rm}
+  end
+
+  defp update_role_manager_for_removed_policy(_params, acc_enforcer), do: acc_enforcer
 end
