@@ -283,6 +283,9 @@ defmodule CasbinEx2.RBAC do
 
   @doc """
   Gets implicit permissions for a user.
+
+  Note: This function returns permissions WITHOUT the subject field for backward compatibility.
+  Use get_implicit_permissions_for_user_with_subject/3 for the full policy including subject.
   """
   def get_implicit_permissions_for_user(%Enforcer{} = enforcer, user, domain \\ "") do
     # Get direct permissions
@@ -300,6 +303,15 @@ defmodule CasbinEx2.RBAC do
     # Combine and deduplicate
     (direct_permissions ++ role_permissions)
     |> Enum.uniq()
+  end
+
+  @doc false
+  # Internal function that returns full policies including the subject field.
+  # Used by get_implicit_resources_for_user and get_allowed_object_conditions.
+  defp get_implicit_permissions_for_user_with_subject(%Enforcer{} = enforcer, user, domain \\ "") do
+    # Use the named version with default ptype "p" and gtype "g"
+    # This returns full policies including the subject
+    get_named_implicit_permissions_for_user(enforcer, "p", "g", user, domain)
   end
 
   @doc """
@@ -912,8 +924,8 @@ defmodule CasbinEx2.RBAC do
         user,
         domain \\ ""
       ) do
-    # Get implicit permissions for the user
-    permissions = get_implicit_permissions_for_user(enforcer, user, domain)
+    # Get implicit permissions for the user WITH subject field
+    permissions = get_implicit_permissions_for_user_with_subject(enforcer, user, domain)
 
     # Process permissions to expand role-based resources
     Enum.flat_map(permissions, fn permission ->
@@ -961,8 +973,8 @@ defmodule CasbinEx2.RBAC do
         action,
         prefix
       ) do
-    # Get implicit permissions for the user
-    permissions = get_implicit_permissions_for_user(enforcer, user)
+    # Get implicit permissions for the user WITH subject field
+    permissions = get_implicit_permissions_for_user_with_subject(enforcer, user)
 
     # Extract object conditions for the specified action
     conditions =
