@@ -7,7 +7,6 @@ defmodule CasbinEx2.Adapter.EctoAdapterTest do
   # Mock Ecto Repo for testing
   defmodule TestRepo do
     @moduledoc false
-    import Ecto.Query
 
     # Simulate Ecto.Repo behavior for testing
     def all(CasbinRule) do
@@ -51,12 +50,10 @@ defmodule CasbinEx2.Adapter.EctoAdapterTest do
     end
 
     def transaction(fun) do
-      try do
-        result = fun.()
-        {:ok, result}
-      rescue
-        e -> {:error, e}
-      end
+      result = fun.()
+      {:ok, result}
+    rescue
+      e -> {:error, e}
     end
 
     # Extract filter conditions from Ecto query
@@ -66,7 +63,7 @@ defmodule CasbinEx2.Adapter.EctoAdapterTest do
       case query.wheres do
         [%{expr: {:==, [], [{{:., [], [{:&, [], [0]}, :ptype]}, _, []}, {:^, [], [0]}]}} | _] ->
           # Extract the bound parameter value
-          case query.params do
+          case Map.get(query, :params, []) do
             [{value, _type}] -> {:ptype, value}
             _ -> :no_filter
           end
@@ -360,7 +357,7 @@ defmodule CasbinEx2.Adapter.EctoAdapterTest do
       adapter = EctoAdapter.new(TestRepo)
       filter = %{ptype: "p"}
 
-      assert {:ok, policies, grouping_policies} =
+      assert {:ok, _policies, _grouping_policies} =
                EctoAdapter.load_filtered_policy(adapter, nil, filter)
 
       # In real implementation with proper query filtering:
@@ -377,7 +374,7 @@ defmodule CasbinEx2.Adapter.EctoAdapterTest do
 
       adapter = EctoAdapter.new(TestRepo)
 
-      assert {:ok, policies, grouping_policies} =
+      assert {:ok, policies, _grouping_policies} =
                EctoAdapter.load_filtered_policy(adapter, nil, nil)
 
       assert policies["p"] == [["alice", "data1", "read"]]

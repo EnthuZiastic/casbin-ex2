@@ -1,8 +1,8 @@
 defmodule CasbinEx2.SyncedEnforcerTest do
   use ExUnit.Case, async: false
 
-  alias CasbinEx2.SyncedEnforcer
   alias CasbinEx2.Adapter.FileAdapter
+  alias CasbinEx2.SyncedEnforcer
 
   @model_path "examples/rbac_model.conf"
   @policy_path "examples/rbac_policy.csv"
@@ -23,7 +23,7 @@ defmodule CasbinEx2.SyncedEnforcerTest do
   end
 
   describe "start_link/3" do
-    test "starts synced enforcer with model and policy", %{name: name, pid: pid} do
+    test "starts synced enforcer with model and policy", %{pid: pid} do
       assert Process.alive?(pid)
     end
 

@@ -1669,24 +1669,29 @@ defmodule CasbinEx2.Enforcer do
 
       func ->
         args = String.split(args_str, ",") |> Enum.map(&String.trim/1)
-        substitute_and_call_function(func, args, request, policy)
+        substitute_and_call_function(func, args, request, policy, func_name)
     end
   end
 
-  defp substitute_and_call_function(func, args, request, policy) do
+  defp substitute_and_call_function(func, args, request, policy, func_name) do
     # Substitute r.* and p.* values
     substituted_args =
       Enum.map(args, fn arg ->
         substitute_parameter(String.trim(arg), request, policy)
       end)
 
-    case substituted_args do
-      [arg1, arg2] ->
-        # Call the function with 2 arguments, adding empty string as 3rd arg for g function
+    case {substituted_args, func_name} do
+      {[arg1, arg2], "g"} ->
+        # Call g function with 2 arguments, adding empty string as 3rd arg
         result = func.(arg1, arg2, "")
         {:ok, result}
 
-      [arg1, arg2, arg3] ->
+      {[arg1, arg2], _} ->
+        # Call regular function with 2 arguments (like ipMatch, keyMatch, etc.)
+        result = func.(arg1, arg2)
+        {:ok, result}
+
+      {[arg1, arg2, arg3], _} ->
         # Call the function with 3 arguments (like g(r.sub, p.sub, r.dom))
         result = func.(arg1, arg2, arg3)
         {:ok, result}

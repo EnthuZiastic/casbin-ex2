@@ -473,15 +473,12 @@ defmodule CasbinEx2.SyncedEnforcer do
   end
 
   defp handle_filtered_policy_operation(state, field_index, field_values) do
-    case remove_filtered_policy_impl(state.enforcer, "p", "p", field_index, field_values) do
-      {:ok, new_enforcer} ->
-        new_state = %{state | enforcer: new_enforcer}
-        update_ets(new_state)
-        {:reply, true, new_state}
+    {:ok, new_enforcer} =
+      remove_filtered_policy_impl(state.enforcer, "p", "p", field_index, field_values)
 
-      {:error, _reason} ->
-        {:reply, false, state}
-    end
+    new_state = %{state | enforcer: new_enforcer}
+    update_ets(new_state)
+    {:reply, true, new_state}
   end
 
   defp handle_write_role_operation(state, call) do

@@ -51,7 +51,7 @@ defmodule CasbinEx2.Adapter.RedisAdapterTest do
         RedisAdapter.new(
           sentinel: [
             host: "sentinel.example.com",
-            port: 26379,
+            port: 26_379,
             master_name: "mymaster"
           ]
         )

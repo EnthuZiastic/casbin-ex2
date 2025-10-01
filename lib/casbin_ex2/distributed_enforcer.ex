@@ -10,6 +10,7 @@ defmodule CasbinEx2.DistributedEnforcer do
   use GenServer
   require Logger
 
+  alias CasbinEx2.Adapter.MemoryAdapter
   alias CasbinEx2.{EnforcerServer, Watcher}
 
   defstruct [
@@ -162,7 +163,9 @@ defmodule CasbinEx2.DistributedEnforcer do
     model_path = Keyword.fetch!(opts, :model_path)
 
     local_enforcer_opts =
-      Keyword.drop(opts, [:nodes, :sync_interval, :auto_sync, :watcher, :model_path])
+      opts
+      |> Keyword.drop([:nodes, :sync_interval, :auto_sync, :watcher, :model_path])
+      |> Keyword.put_new(:adapter, MemoryAdapter.new())
 
     {:ok, local_enforcer} =
       EnforcerServer.start_link(enforcer_name, model_path, local_enforcer_opts)
@@ -191,7 +194,7 @@ defmodule CasbinEx2.DistributedEnforcer do
     # Monitor cluster nodes
     Enum.each(nodes, &Node.monitor(&1, true))
 
-    Logger.debug("Started distributed enforcer #{enforcer_name} with nodes: #{inspect(nodes)}")
+    # Logger.debug("Started distributed enforcer #{enforcer_name} with nodes: #{inspect(nodes)}")
 
     {:ok, state}
   end

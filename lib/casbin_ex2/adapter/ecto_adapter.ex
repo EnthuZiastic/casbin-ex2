@@ -208,7 +208,8 @@ defmodule CasbinEx2.Adapter.EctoAdapter do
   defp apply_filter_to_query(query, _), do: query
 
   defp apply_filter_condition(query, :ptype, value) do
-    from(r in query, where: r.ptype == ^value)
+    import Ecto.Query
+    where(query, [r], r.ptype == ^value)
   end
 
   defp apply_filter_condition(query, _key, _value), do: query
