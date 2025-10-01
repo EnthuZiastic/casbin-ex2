@@ -3,11 +3,18 @@ defmodule CasbinEx2.RoleManager do
   Role manager for handling role inheritance.
   """
 
-  defstruct [:max_hierarchy_level, :roles]
+  defstruct [
+    :max_hierarchy_level,
+    :roles,
+    matching_func: nil,
+    domain_matching_func: nil
+  ]
 
   @type t :: %__MODULE__{
           max_hierarchy_level: integer(),
-          roles: map()
+          roles: map(),
+          matching_func: (String.t(), String.t() -> boolean()) | nil,
+          domain_matching_func: (String.t(), String.t() -> boolean()) | nil
         }
 
   @doc """
@@ -138,7 +145,32 @@ defmodule CasbinEx2.RoleManager do
   end
 
   defp check_role_membership(role_manager, role_set, role2, domain, level, target_key) do
-    if MapSet.member?(role_set, target_key) do
+    cond do
+      # Direct membership check
+      MapSet.member?(role_set, target_key) ->
+        true
+
+      # Pattern matching check if matching function is set
+      role_manager.matching_func != nil ->
+        check_with_pattern_matching(role_manager, role_set, role2, domain, level)
+
+      # Transitive inheritance check
+      true ->
+        check_transitive_inheritance(role_manager, role_set, role2, domain, level)
+    end
+  end
+
+  defp check_with_pattern_matching(role_manager, role_set, role2, domain, level) do
+    # Check if any role in the role_set matches role2 using the matching function
+    role_matched =
+      role_set
+      |> MapSet.to_list()
+      |> Enum.any?(fn inherited_role_key ->
+        inherited_role = extract_role_from_key(inherited_role_key)
+        role_manager.matching_func.(inherited_role, role2)
+      end)
+
+    if role_matched do
       true
     else
       check_transitive_inheritance(role_manager, role_set, role2, domain, level)
@@ -186,12 +218,17 @@ defmodule CasbinEx2.RoleManager do
   For now, it's a placeholder for future pattern matching support.
   """
   @spec add_matching_func(t(), String.t(), function()) :: t()
-  def add_matching_func(role_manager, _name, _func) do
-    # TODO: Implement pattern matching support
-    # This would involve:
-    # 1. Storing the matching function
-    # 2. Rebuilding role relationships using the pattern matcher
-    # 3. Updating has_link to use pattern matching
+  def add_matching_func(role_manager, _name, func) do
+    # Store the matching function and rebuild role relationships
+    %{role_manager | matching_func: func}
+    |> rebuild_role_links()
+  end
+
+  defp rebuild_role_links(role_manager) do
+    # When a matching function is added, we need to rebuild role relationships
+    # This allows pattern matching to be applied to existing roles
+    # For now, we just return the role manager with the function stored
+    # The pattern matching will be applied in has_link/4
     role_manager
   end
 
@@ -212,12 +249,8 @@ defmodule CasbinEx2.RoleManager do
   For now, it's a placeholder for future domain pattern matching support.
   """
   @spec add_domain_matching_func(t(), String.t(), function()) :: t()
-  def add_domain_matching_func(role_manager, _name, _func) do
-    # TODO: Implement domain pattern matching support
-    # This would involve:
-    # 1. Storing the domain matching function
-    # 2. Applying pattern matching when comparing domains
-    # 3. Supporting wildcard domains in role hierarchies
-    role_manager
+  def add_domain_matching_func(role_manager, _name, func) do
+    # Store the domain matching function
+    %{role_manager | domain_matching_func: func}
   end
 end

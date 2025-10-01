@@ -2025,20 +2025,7 @@ defmodule CasbinEx2.Enforcer do
     cond do
       # Check if it's a function call
       String.contains?(expr, "(") and String.contains?(expr, ")") ->
-        case parse_function_call(expr) do
-          {:ok, func_name, args_str} ->
-            case Map.get(function_map, func_name) do
-              nil ->
-                expr
-
-              func ->
-                args = String.split(args_str, ",") |> Enum.map(&String.trim/1)
-                call_function_raw(func, args, request, policy, func_name)
-            end
-
-          {:error, _} ->
-            expr
-        end
+        evaluate_side_function_call(expr, request, policy, function_map)
 
       # Check if it's a quoted string
       String.starts_with?(expr, "'") and String.ends_with?(expr, "'") ->
@@ -2050,6 +2037,16 @@ defmodule CasbinEx2.Enforcer do
       # Otherwise substitute parameter
       true ->
         substitute_parameter(expr, request, policy)
+    end
+  end
+
+  defp evaluate_side_function_call(expr, request, policy, function_map) do
+    with {:ok, func_name, args_str} <- parse_function_call(expr),
+         func when not is_nil(func) <- Map.get(function_map, func_name) do
+      args = String.split(args_str, ",") |> Enum.map(&String.trim/1)
+      call_function_raw(func, args, request, policy, func_name)
+    else
+      _ -> expr
     end
   end
 
@@ -2554,23 +2551,14 @@ defmodule CasbinEx2.Enforcer do
   defp key_get(key1, key2) do
     # KeyGet returns the matched part
     # For example, "/foo/bar/foo" matches "/foo/*", returns "bar/foo"
-    case :binary.match(key2, "*") do
-      {i, _} ->
-        if byte_size(key1) > i do
-          prefix1 = :binary.part(key1, 0, i)
-          prefix2 = :binary.part(key2, 0, i)
-
-          if prefix1 == prefix2 do
-            :binary.part(key1, i, byte_size(key1) - i)
-          else
-            ""
-          end
-        else
-          ""
-        end
-
-      :nomatch ->
-        ""
+    with {i, _} <- :binary.match(key2, "*"),
+         true <- byte_size(key1) > i,
+         prefix1 <- :binary.part(key1, 0, i),
+         prefix2 <- :binary.part(key2, 0, i),
+         true <- prefix1 == prefix2 do
+      :binary.part(key1, i, byte_size(key1) - i)
+    else
+      _ -> ""
     end
   end
 
@@ -2587,25 +2575,12 @@ defmodule CasbinEx2.Enforcer do
     pattern = Regex.replace(~r/:([^\/]+)/, key2_replaced, "([^/]+)")
     pattern = "^#{pattern}$"
 
-    case Regex.compile(pattern) do
-      {:ok, regex} ->
-        case Regex.run(regex, key1) do
-          nil ->
-            ""
-
-          matches ->
-            # matches[0] is the full match, matches[1..] are the captured groups
-            captures = Enum.drop(matches, 1)
-
-            # Find the index of the pathVar in keys and return the corresponding capture
-            case Enum.find_index(keys, &(&1 == path_var)) do
-              nil -> ""
-              index -> Enum.at(captures, index, "")
-            end
-        end
-
-      {:error, _} ->
-        ""
+    with {:ok, regex} <- Regex.compile(pattern),
+         [_ | captures] <- Regex.run(regex, key1),
+         index when not is_nil(index) <- Enum.find_index(keys, &(&1 == path_var)) do
+      Enum.at(captures, index, "")
+    else
+      _ -> ""
     end
   end
 
@@ -2624,25 +2599,12 @@ defmodule CasbinEx2.Enforcer do
     pattern = Regex.replace(~r/\{([^}]+?)\}/, key2_replaced, "([^/]+?)")
     pattern = "^#{pattern}$"
 
-    case Regex.compile(pattern) do
-      {:ok, regex} ->
-        case Regex.run(regex, key1) do
-          nil ->
-            ""
-
-          matches ->
-            # matches[0] is the full match, matches[1..] are the captured groups
-            captures = Enum.drop(matches, 1)
-
-            # Find the index of the pathVar in keys and return the corresponding capture
-            case Enum.find_index(keys, &(&1 == path_var)) do
-              nil -> ""
-              index -> Enum.at(captures, index, "")
-            end
-        end
-
-      {:error, _} ->
-        ""
+    with {:ok, regex} <- Regex.compile(pattern),
+         [_ | captures] <- Regex.run(regex, key1),
+         index when not is_nil(index) <- Enum.find_index(keys, &(&1 == path_var)) do
+      Enum.at(captures, index, "")
+    else
+      _ -> ""
     end
   end
 
@@ -3154,19 +3116,21 @@ defmodule CasbinEx2.Enforcer do
       end)
   """
   @spec add_named_link_condition_func(t(), String.t(), String.t(), String.t(), function()) :: t()
-  def add_named_link_condition_func(enforcer, ptype, _user, _role, _func) do
-    # This requires conditional role manager support
-    # For now, we'll store it in metadata or return enforcer unchanged
-    # When ConditionalRoleManager is implemented, this will delegate to it
+  def add_named_link_condition_func(enforcer, ptype, user, role, func) do
     case Map.get(enforcer.named_role_managers, ptype) do
       nil ->
         enforcer
 
-      _role_manager ->
-        # TODO: When ConditionalRoleManager is implemented, use:
-        # updated_rm = ConditionalRoleManager.add_link_condition_func(role_manager, user, role, func)
-        # For now, just return enforcer
-        enforcer
+      role_manager ->
+        cond_rm = ensure_conditional_role_manager(role_manager)
+
+        updated_cond_rm =
+          CasbinEx2.ConditionalRoleManager.add_link_condition_func(cond_rm, user, role, func)
+
+        %{
+          enforcer
+          | named_role_managers: Map.put(enforcer.named_role_managers, ptype, updated_cond_rm)
+        }
     end
   end
 
@@ -3199,16 +3163,27 @@ defmodule CasbinEx2.Enforcer do
           String.t(),
           function()
         ) :: t()
-  def add_named_domain_link_condition_func(enforcer, ptype, _user, _role, _domain, _func) do
-    # This requires conditional role manager support
+  def add_named_domain_link_condition_func(enforcer, ptype, user, role, domain, func) do
     case Map.get(enforcer.named_role_managers, ptype) do
       nil ->
         enforcer
 
-      _role_manager ->
-        # TODO: When ConditionalRoleManager is implemented, use:
-        # updated_rm = ConditionalRoleManager.add_domain_link_condition_func(role_manager, user, role, domain, func)
-        enforcer
+      role_manager ->
+        cond_rm = ensure_conditional_role_manager(role_manager)
+
+        updated_cond_rm =
+          CasbinEx2.ConditionalRoleManager.add_domain_link_condition_func(
+            cond_rm,
+            user,
+            role,
+            domain,
+            func
+          )
+
+        %{
+          enforcer
+          | named_role_managers: Map.put(enforcer.named_role_managers, ptype, updated_cond_rm)
+        }
     end
   end
 
@@ -3236,16 +3211,26 @@ defmodule CasbinEx2.Enforcer do
           String.t(),
           [String.t()]
         ) :: t()
-  def set_named_link_condition_func_params(enforcer, ptype, _user, _role, _params) do
-    # This requires conditional role manager support
+  def set_named_link_condition_func_params(enforcer, ptype, user, role, params) do
     case Map.get(enforcer.named_role_managers, ptype) do
       nil ->
         enforcer
 
-      _role_manager ->
-        # TODO: When ConditionalRoleManager is implemented, use:
-        # updated_rm = ConditionalRoleManager.set_link_condition_func_params(role_manager, user, role, params)
-        enforcer
+      role_manager ->
+        cond_rm = ensure_conditional_role_manager(role_manager)
+
+        updated_cond_rm =
+          CasbinEx2.ConditionalRoleManager.set_link_condition_func_params(
+            cond_rm,
+            user,
+            role,
+            params
+          )
+
+        %{
+          enforcer
+          | named_role_managers: Map.put(enforcer.named_role_managers, ptype, updated_cond_rm)
+        }
     end
   end
 
@@ -3275,18 +3260,27 @@ defmodule CasbinEx2.Enforcer do
           String.t(),
           [String.t()]
         ) :: t()
-  def set_named_domain_link_condition_func_params(enforcer, ptype, _user, _role, _domain, _params) do
-    # This requires conditional role manager support
+  def set_named_domain_link_condition_func_params(enforcer, ptype, user, role, domain, params) do
     case Map.get(enforcer.named_role_managers, ptype) do
       nil ->
         enforcer
 
-      _role_manager ->
-        # TODO: When ConditionalRoleManager is implemented, use:
-        # updated_rm = ConditionalRoleManager.set_domain_link_condition_func_params(
-        #   role_manager, user, role, domain, params
-        # )
-        enforcer
+      role_manager ->
+        cond_rm = ensure_conditional_role_manager(role_manager)
+
+        updated_cond_rm =
+          CasbinEx2.ConditionalRoleManager.set_domain_link_condition_func_params(
+            cond_rm,
+            user,
+            role,
+            domain,
+            params
+          )
+
+        %{
+          enforcer
+          | named_role_managers: Map.put(enforcer.named_role_managers, ptype, updated_cond_rm)
+        }
     end
   end
 
@@ -3560,5 +3554,12 @@ defmodule CasbinEx2.Enforcer do
 
   defp add_policies_for_sec(_enforcer, _sec, _ptype, _rules) do
     {:error, "invalid section type, must be 'p' or 'g'"}
+  end
+
+  # Helper function to ensure a role manager is wrapped in a ConditionalRoleManager
+  defp ensure_conditional_role_manager(%CasbinEx2.ConditionalRoleManager{} = cond_rm), do: cond_rm
+
+  defp ensure_conditional_role_manager(%CasbinEx2.RoleManager{} = rm) do
+    CasbinEx2.ConditionalRoleManager.new(rm)
   end
 end

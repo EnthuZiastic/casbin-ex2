@@ -11,7 +11,8 @@ defmodule CasbinEx2.Model do
     :policy_definition,
     :role_definition,
     :policy_effect,
-    :matchers
+    :matchers,
+    field_index_map: %{}
   ]
 
   @type t :: %__MODULE__{
@@ -19,7 +20,8 @@ defmodule CasbinEx2.Model do
           policy_definition: map(),
           role_definition: map(),
           policy_effect: map(),
-          matchers: map()
+          matchers: map(),
+          field_index_map: %{String.t() => %{String.t() => integer()}}
         }
 
   @doc """
@@ -216,13 +218,40 @@ defmodule CasbinEx2.Model do
   3. Cache the result for future lookups
   """
   @spec get_field_index(t(), String.t(), String.t()) :: {:ok, integer()} | {:error, String.t()}
-  def get_field_index(_model, _ptype, field) do
-    # TODO: Implement field index lookup
-    # This would involve:
-    # 1. Checking if field index is cached in model
-    # 2. Searching policy tokens for the field pattern
-    # 3. Caching the discovered index
-    {:error, "#{field} index is not set, please use enforcer.set_field_index() to set index"}
+  def get_field_index(model, ptype, field) do
+    # First check if the field index is cached
+    case get_in(model.field_index_map, [ptype, field]) do
+      nil ->
+        # Not in cache, try to find it in the policy tokens
+        find_field_index_in_tokens(model, ptype, field)
+
+      index ->
+        {:ok, index}
+    end
+  end
+
+  defp find_field_index_in_tokens(model, ptype, field) do
+    # Look for the pattern "ptype_field" in policy definition tokens
+    # For example, for ptype="p" and field="priority", look for "p_priority"
+    pattern = "#{ptype}_#{field}"
+
+    case get_in(model.policy_definition, [ptype]) do
+      nil ->
+        {:error, "Policy type #{ptype} not found"}
+
+      policy_def ->
+        # Parse the policy definition to get tokens
+        tokens = String.split(policy_def, ",") |> Enum.map(&String.trim/1)
+
+        case Enum.find_index(tokens, &(&1 == pattern)) do
+          nil ->
+            {:error,
+             "#{field} index is not set, please use enforcer.set_field_index() to set index"}
+
+          index ->
+            {:ok, index}
+        end
+    end
   end
 
   @doc """
@@ -246,12 +275,14 @@ defmodule CasbinEx2.Model do
   3. Support custom field ordering in policies
   """
   @spec set_field_index(t(), String.t(), String.t(), integer()) :: t()
-  def set_field_index(model, _ptype, _field, _index) do
-    # TODO: Implement field index storage
-    # This would involve:
-    # 1. Adding field_index_map to model struct
-    # 2. Storing the ptype -> field -> index mapping
-    # 3. Making it available to get_field_index
-    model
+  def set_field_index(model, ptype, field, index) do
+    # Store the field index in the field_index_map
+    # Structure: %{ptype => %{field => index}}
+    updated_map =
+      model.field_index_map
+      |> Map.put_new(ptype, %{})
+      |> put_in([ptype, field], index)
+
+    %{model | field_index_map: updated_map}
   end
 end
