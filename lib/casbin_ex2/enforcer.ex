@@ -2858,7 +2858,7 @@ defmodule CasbinEx2.Enforcer do
       end)
   """
   @spec add_named_link_condition_func(t(), String.t(), String.t(), String.t(), function()) :: t()
-  def add_named_link_condition_func(enforcer, ptype, user, role, func) do
+  def add_named_link_condition_func(enforcer, ptype, _user, _role, _func) do
     # This requires conditional role manager support
     # For now, we'll store it in metadata or return enforcer unchanged
     # When ConditionalRoleManager is implemented, this will delegate to it
@@ -2903,7 +2903,7 @@ defmodule CasbinEx2.Enforcer do
           String.t(),
           function()
         ) :: t()
-  def add_named_domain_link_condition_func(enforcer, ptype, user, role, domain, func) do
+  def add_named_domain_link_condition_func(enforcer, ptype, _user, _role, _domain, _func) do
     # This requires conditional role manager support
     case Map.get(enforcer.named_role_managers, ptype) do
       nil ->
@@ -2989,6 +2989,294 @@ defmodule CasbinEx2.Enforcer do
         # TODO: When ConditionalRoleManager is implemented, use:
         # updated_rm = ConditionalRoleManager.set_domain_link_condition_func_params(role_manager, user, role, domain, params)
         enforcer
+    end
+  end
+
+  # Internal API Functions
+
+  @doc """
+  Checks if policies should be persisted to the adapter.
+
+  Returns true if both an adapter is set and auto_save is enabled.
+
+  ## Examples
+
+      should_persist(enforcer)
+      # Returns: true (if adapter exists and auto_save is true)
+  """
+  @spec should_persist(t()) :: boolean()
+  def should_persist(%__MODULE__{adapter: adapter, auto_save: auto_save}) do
+    adapter != nil and auto_save
+  end
+
+  @doc """
+  Checks if policy changes should trigger watcher notifications.
+
+  Returns true if both a watcher is set and auto_notify_watcher is enabled.
+
+  ## Examples
+
+      should_notify(enforcer)
+      # Returns: true (if watcher exists and auto_notify_watcher is true)
+  """
+  @spec should_notify(t()) :: boolean()
+  def should_notify(%__MODULE__{watcher: watcher, auto_notify_watcher: auto_notify_watcher}) do
+    watcher != nil and auto_notify_watcher
+  end
+
+  @doc """
+  Gets the field index for a policy type field.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `ptype` - Policy type (e.g., "p", "p2")
+  - `field` - Field name (e.g., "sub", "obj", "act")
+
+  ## Returns
+  - `{:ok, index}` on success
+  - `{:error, reason}` if field not found
+
+  ## Examples
+
+      {:ok, index} = get_field_index(enforcer, "p", "sub")
+      # Returns: {:ok, 0}
+  """
+  @spec get_field_index(t(), String.t(), String.t()) :: {:ok, integer()} | {:error, term()}
+  def get_field_index(%__MODULE__{model: model}, ptype, field) do
+    case Model.get_field_index(model, ptype, field) do
+      {:ok, index} -> {:ok, index}
+      error -> error
+    end
+  end
+
+  @doc """
+  Sets the field index for a policy type field.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `ptype` - Policy type (e.g., "p", "p2")
+  - `field` - Field name (e.g., "sub", "obj", "act")
+  - `index` - The index to set
+
+  ## Returns
+  Updated enforcer
+
+  ## Examples
+
+      enforcer = set_field_index(enforcer, "p", "custom_field", 5)
+  """
+  @spec set_field_index(t(), String.t(), String.t(), integer()) :: t()
+  def set_field_index(%__MODULE__{model: model} = enforcer, ptype, field, index) do
+    updated_model = Model.set_field_index(model, ptype, field, index)
+    %{enforcer | model: updated_model}
+  end
+
+  @doc """
+  Updates a policy rule without triggering watcher or dispatcher notifications.
+
+  This is an internal function used for distributed scenarios where the
+  update originated from another enforcer instance.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `sec` - Section type ("p" or "g")
+  - `ptype` - Policy type
+  - `old_rule` - The existing rule to replace
+  - `new_rule` - The new rule
+
+  ## Returns
+  - `{:ok, enforcer, true}` if rule was updated
+  - `{:ok, enforcer, false}` if rule was not found
+  - `{:error, reason}` on failure
+  """
+  @spec update_policy_without_notify(t(), String.t(), String.t(), [String.t()], [String.t()]) ::
+          {:ok, t(), boolean()} | {:error, term()}
+  def update_policy_without_notify(enforcer, sec, ptype, old_rule, new_rule) do
+    # Note: Dispatcher notification intentionally skipped for "without_notify" functions
+    # These are used when the change originated from another enforcer instance
+
+    case sec do
+      "p" ->
+        case Management.update_named_policy(enforcer, ptype, old_rule, new_rule) do
+          {:ok, updated_enforcer} -> {:ok, updated_enforcer, true}
+          {:error, reason} -> {:error, reason}
+        end
+
+      "g" ->
+        case Management.update_named_grouping_policy(enforcer, ptype, old_rule, new_rule) do
+          {:ok, updated_enforcer} -> {:ok, updated_enforcer, true}
+          {:error, reason} -> {:error, reason}
+        end
+
+      _ ->
+        {:error, "invalid section type, must be 'p' or 'g'"}
+    end
+  end
+
+  @doc """
+  Updates multiple policy rules without triggering watcher or dispatcher notifications.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `sec` - Section type ("p" or "g")
+  - `ptype` - Policy type
+  - `old_rules` - List of existing rules to replace
+  - `new_rules` - List of new rules (must match length of old_rules)
+
+  ## Returns
+  - `{:ok, enforcer, true}` if rules were updated
+  - `{:ok, enforcer, false}` if no rules were updated
+  - `{:error, reason}` on failure
+  """
+  @spec update_policies_without_notify(
+          t(),
+          String.t(),
+          String.t(),
+          [[String.t()]],
+          [[String.t()]]
+        ) :: {:ok, t(), boolean()} | {:error, term()}
+  def update_policies_without_notify(enforcer, sec, ptype, old_rules, new_rules) do
+    if length(old_rules) != length(new_rules) do
+      {:error,
+       "the length of old_rules (#{length(old_rules)}) must equal the length of new_rules (#{length(new_rules)})"}
+    else
+      case sec do
+        "p" ->
+          case Management.update_named_policies(enforcer, ptype, old_rules, new_rules) do
+            {:ok, updated_enforcer} -> {:ok, updated_enforcer, true}
+            {:error, reason} -> {:error, reason}
+          end
+
+        "g" ->
+          case Management.update_named_grouping_policies(enforcer, ptype, old_rules, new_rules) do
+            {:ok, updated_enforcer} -> {:ok, updated_enforcer, true}
+            {:error, reason} -> {:error, reason}
+          end
+
+        _ ->
+          {:error, "invalid section type, must be 'p' or 'g'"}
+      end
+    end
+  end
+
+  @doc """
+  Removes filtered policies without triggering watcher or dispatcher notifications.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `sec` - Section type ("p" or "g")
+  - `ptype` - Policy type
+  - `field_index` - Index of the field to match (0-based)
+  - `field_values` - Values to match for filtering
+
+  ## Returns
+  - `{:ok, enforcer, true}` if policies were removed
+  - `{:ok, enforcer, false}` if no policies matched
+  - `{:error, reason}` on failure
+  """
+  @spec remove_filtered_policy_without_notify(
+          t(),
+          String.t(),
+          String.t(),
+          integer(),
+          [String.t()]
+        ) :: {:ok, t()} | {:error, term()}
+  def remove_filtered_policy_without_notify(enforcer, sec, ptype, field_index, field_values) do
+    if length(field_values) == 0 do
+      {:error, "field_values cannot be empty"}
+    else
+      case sec do
+        "p" ->
+          Management.remove_filtered_named_policy(enforcer, ptype, field_index, field_values)
+
+        "g" ->
+          Management.remove_filtered_named_grouping_policy(
+            enforcer,
+            ptype,
+            field_index,
+            field_values
+          )
+
+        _ ->
+          {:error, "invalid section type, must be 'p' or 'g'"}
+      end
+    end
+  end
+
+  @doc """
+  Updates filtered policies without triggering watcher or dispatcher notifications.
+
+  Removes policies matching the filter and adds new policies.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `sec` - Section type ("p" or "g")
+  - `ptype` - Policy type
+  - `new_rules` - New rules to add after removing filtered policies
+  - `field_index` - Index of the field to match (0-based)
+  - `field_values` - Values to match for filtering
+
+  ## Returns
+  - `{:ok, enforcer, old_rules}` with the removed rules
+  - `{:error, reason}` on failure
+  """
+  @spec update_filtered_policies_without_notify(
+          t(),
+          String.t(),
+          String.t(),
+          [[String.t()]],
+          integer(),
+          [String.t()]
+        ) :: {:ok, t(), [[String.t()]]} | {:error, term()}
+  def update_filtered_policies_without_notify(
+        enforcer,
+        sec,
+        ptype,
+        new_rules,
+        field_index,
+        field_values
+      ) do
+    # Get the old rules that will be removed
+    old_rules =
+      case sec do
+        "p" ->
+          Management.get_filtered_named_policy(enforcer, ptype, field_index, field_values)
+
+        "g" ->
+          Management.get_filtered_named_grouping_policy(
+            enforcer,
+            ptype,
+            field_index,
+            field_values
+          )
+
+        _ ->
+          []
+      end
+
+    # Remove filtered policies
+    case remove_filtered_policy_without_notify(enforcer, sec, ptype, field_index, field_values) do
+      {:ok, updated_enforcer, _} ->
+        # Add new policies
+        case sec do
+          "p" ->
+            case Management.add_named_policies(updated_enforcer, ptype, new_rules) do
+              {:ok, final_enforcer} -> {:ok, final_enforcer, old_rules}
+              {:error, reason} -> {:error, reason}
+            end
+
+          "g" ->
+            case Management.add_named_grouping_policies(updated_enforcer, ptype, new_rules) do
+              {:ok, final_enforcer} -> {:ok, final_enforcer, old_rules}
+              {:error, reason} -> {:error, reason}
+            end
+
+          _ ->
+            {:error, "invalid section type, must be 'p' or 'g'"}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 end

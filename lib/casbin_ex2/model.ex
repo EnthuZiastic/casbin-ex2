@@ -193,4 +193,65 @@ defmodule CasbinEx2.Model do
     end)
     |> elem(0)
   end
+
+  @doc """
+  Gets the field index for a specific policy type and field name.
+
+  Field indices are used to map custom field names to positions in policy rules.
+  For example, mapping "priority" to index 3 in a policy rule.
+
+  ## Parameters
+  - `model` - The model struct
+  - `ptype` - Policy type (e.g., "p", "p2")
+  - `field` - Field name (e.g., "priority", "domain")
+
+  ## Returns
+  - `{:ok, index}` - The field index if found
+  - `{:error, message}` - If field index is not set
+
+  ## Note
+  This is a placeholder implementation. In the full version, this would:
+  1. Check a field_index_map stored in the model
+  2. Search policy_definition tokens for pattern matches
+  3. Cache the result for future lookups
+  """
+  @spec get_field_index(t(), String.t(), String.t()) :: {:ok, integer()} | {:error, String.t()}
+  def get_field_index(_model, _ptype, field) do
+    # TODO: Implement field index lookup
+    # This would involve:
+    # 1. Checking if field index is cached in model
+    # 2. Searching policy tokens for the field pattern
+    # 3. Caching the discovered index
+    {:error, "#{field} index is not set, please use enforcer.set_field_index() to set index"}
+  end
+
+  @doc """
+  Sets the field index for a specific policy type and field name.
+
+  This allows custom field names to be mapped to specific positions in policy rules.
+
+  ## Parameters
+  - `model` - The model struct
+  - `ptype` - Policy type (e.g., "p", "p2")
+  - `field` - Field name (e.g., "priority", "domain")
+  - `index` - The zero-based index position
+
+  ## Returns
+  Updated model
+
+  ## Note
+  This is a placeholder implementation. In the full version, this would:
+  1. Store the field index in a field_index_map
+  2. Allow get_field_index to retrieve it later
+  3. Support custom field ordering in policies
+  """
+  @spec set_field_index(t(), String.t(), String.t(), integer()) :: t()
+  def set_field_index(model, _ptype, _field, _index) do
+    # TODO: Implement field index storage
+    # This would involve:
+    # 1. Adding field_index_map to model struct
+    # 2. Storing the ptype -> field -> index mapping
+    # 3. Making it available to get_field_index
+    model
+  end
 end

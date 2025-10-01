@@ -168,4 +168,56 @@ defmodule CasbinEx2.RoleManager do
       [role, _domain] -> role
     end
   end
+
+  @doc """
+  Adds a matching function to support pattern matching in roles.
+  This allows role names to use patterns/wildcards.
+
+  ## Parameters
+  - `role_manager` - The role manager struct
+  - `name` - Name/identifier for this matching function
+  - `func` - The matching function that takes two strings and returns boolean
+
+  ## Returns
+  Updated role manager
+
+  ## Note
+  In the full implementation, this would rebuild the role cache.
+  For now, it's a placeholder for future pattern matching support.
+  """
+  @spec add_matching_func(t(), String.t(), function()) :: t()
+  def add_matching_func(role_manager, _name, _func) do
+    # TODO: Implement pattern matching support
+    # This would involve:
+    # 1. Storing the matching function
+    # 2. Rebuilding role relationships using the pattern matcher
+    # 3. Updating has_link to use pattern matching
+    role_manager
+  end
+
+  @doc """
+  Adds a domain matching function to support pattern matching in domain names.
+  This allows domain names to use patterns/wildcards.
+
+  ## Parameters
+  - `role_manager` - The role manager struct
+  - `name` - Name/identifier for this matching function
+  - `func` - The matching function that takes two strings and returns boolean
+
+  ## Returns
+  Updated role manager
+
+  ## Note
+  In the full implementation, this would apply pattern matching to domain names.
+  For now, it's a placeholder for future domain pattern matching support.
+  """
+  @spec add_domain_matching_func(t(), String.t(), function()) :: t()
+  def add_domain_matching_func(role_manager, _name, _func) do
+    # TODO: Implement domain pattern matching support
+    # This would involve:
+    # 1. Storing the domain matching function
+    # 2. Applying pattern matching when comparing domains
+    # 3. Supporting wildcard domains in role hierarchies
+    role_manager
+  end
 end
