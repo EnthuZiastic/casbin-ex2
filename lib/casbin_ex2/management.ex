@@ -414,6 +414,31 @@ defmodule CasbinEx2.Management do
   end
 
   @doc """
+  Adds a custom function to the enforcer's function map.
+
+  The function can then be used in matcher expressions.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `name` - The name of the function (string)
+  - `function` - An anonymous function that takes arguments and returns a boolean or value
+
+  ## Examples
+
+      # Add a custom matching function
+      enforcer = Management.add_function(enforcer, "customMatch", fn arg1, arg2 ->
+        String.contains?(arg1, arg2)
+      end)
+
+      # Now you can use it in matchers: customMatch(r.obj, p.obj)
+  """
+  def add_function(%Enforcer{function_map: function_map} = enforcer, name, function)
+      when is_binary(name) and is_function(function) do
+    updated_function_map = Map.put(function_map, name, function)
+    %{enforcer | function_map: updated_function_map}
+  end
+
+  @doc """
   Updates a role inheritance rule from old_rule to new_rule.
   Returns {:ok, enforcer} if successful, {:error, reason} if failed.
   """
