@@ -1,4 +1,4 @@
 - This project is an Elixir version of ../casbin written in Golang
-- Make sure to have similarly named functions in Elixir when taking reference from the Golang reference project in ../casbin
-- After your coding session always run mix format to format the code correctly and then mix credo --strict to fix any issues pointed out by credo linter
-- After your coding session always always run mix test to check for any failing tests and then fix
+- When migrating from Golang to Elixir make sure to use same or similar names for modules, functions, tests, etc as far as possible. The only difference should be Elixir’s snake_case naming style.
+- Make sure to have similarly named functions in Elixir when taking reference from the Golang reference project in ../casbin. Keep the structure parallel to maintain familiarity between both codebases.
+- After each coding session, always: 1) Run mix format to correctly format the code, 2) Run mix credo --strict and fix all issues flagged by the linter, 3) Run mix test to check for failing tests and fix any issues immediately.
