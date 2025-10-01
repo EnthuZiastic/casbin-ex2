@@ -1,14 +1,17 @@
 defmodule CasbinEx2.BuiltinOperatorsTest do
   use ExUnit.Case, async: true
 
+  alias CasbinEx2.Adapter.MemoryAdapter
   alias CasbinEx2.Enforcer
+  alias CasbinEx2.Management
+  alias CasbinEx2.Model
 
   describe "keyGet/2" do
     test "returns matched part from wildcard pattern" do
       {:ok, enforcer} = create_test_enforcer_with_matcher("keyGet(r.obj, p.obj)")
 
       # Add policy with wildcard
-      {:ok, enforcer} = CasbinEx2.Management.add_policy(enforcer, ["alice", "/foo/*", "GET"])
+      {:ok, enforcer} = Management.add_policy(enforcer, ["alice", "/foo/*", "GET"])
 
       # The keyGet should extract "bar/baz" from "/foo/bar/baz"
       assert Enforcer.enforce(enforcer, ["alice", "/foo/bar/baz", "GET"])
@@ -17,7 +20,7 @@ defmodule CasbinEx2.BuiltinOperatorsTest do
     test "returns empty string when no match" do
       {:ok, enforcer} = create_test_enforcer_with_matcher("keyGet(r.obj, p.obj) == ''")
 
-      {:ok, enforcer} = CasbinEx2.Management.add_policy(enforcer, ["alice", "/bar/*", "GET"])
+      {:ok, enforcer} = Management.add_policy(enforcer, ["alice", "/bar/*", "GET"])
 
       # No match since /foo/bar doesn't start with /bar/
       assert Enforcer.enforce(enforcer, ["alice", "/foo/bar", "GET"])
@@ -29,7 +32,7 @@ defmodule CasbinEx2.BuiltinOperatorsTest do
       {:ok, enforcer} =
         create_test_enforcer_with_matcher("keyGet2(r.obj, p.obj, 'id') == 'alice'")
 
-      {:ok, enforcer} = CasbinEx2.Management.add_policy(enforcer, ["user", "/user/:id", "GET"])
+      {:ok, enforcer} = Management.add_policy(enforcer, ["user", "/user/:id", "GET"])
 
       assert Enforcer.enforce(enforcer, ["user", "/user/alice", "GET"])
       refute Enforcer.enforce(enforcer, ["user", "/user/bob", "GET"])
@@ -39,7 +42,7 @@ defmodule CasbinEx2.BuiltinOperatorsTest do
       {:ok, enforcer} =
         create_test_enforcer_with_matcher("keyGet2(r.obj, p.obj, 'missing') == ''")
 
-      {:ok, enforcer} = CasbinEx2.Management.add_policy(enforcer, ["user", "/user/:id", "GET"])
+      {:ok, enforcer} = Management.add_policy(enforcer, ["user", "/user/:id", "GET"])
 
       assert Enforcer.enforce(enforcer, ["user", "/user/alice", "GET"])
     end
@@ -51,7 +54,7 @@ defmodule CasbinEx2.BuiltinOperatorsTest do
         create_test_enforcer_with_matcher("keyGet3(r.obj, p.obj, 'project') == 'project1'")
 
       {:ok, enforcer} =
-        CasbinEx2.Management.add_policy(enforcer, ["user", "project/proj_{project}_admin/", "GET"])
+        Management.add_policy(enforcer, ["user", "project/proj_{project}_admin/", "GET"])
 
       assert Enforcer.enforce(enforcer, ["user", "project/proj_project1_admin/", "GET"])
       refute Enforcer.enforce(enforcer, ["user", "project/proj_project2_admin/", "GET"])
@@ -61,7 +64,7 @@ defmodule CasbinEx2.BuiltinOperatorsTest do
       {:ok, enforcer} = create_test_enforcer_with_matcher("keyGet3(r.obj, p.obj, 'id') == '123'")
 
       {:ok, enforcer} =
-        CasbinEx2.Management.add_policy(enforcer, ["user", "/org/{org}/user/{id}", "GET"])
+        Management.add_policy(enforcer, ["user", "/org/{org}/user/{id}", "GET"])
 
       assert Enforcer.enforce(enforcer, ["user", "/org/acme/user/123", "GET"])
       refute Enforcer.enforce(enforcer, ["user", "/org/acme/user/456", "GET"])
@@ -78,7 +81,7 @@ defmodule CasbinEx2.BuiltinOperatorsTest do
       {:ok, enforcer} =
         create_test_enforcer_with_matcher("timeMatch('#{start_time}', '#{end_time}')")
 
-      {:ok, enforcer} = CasbinEx2.Management.add_policy(enforcer, ["alice", "data1", "read"])
+      {:ok, enforcer} = Management.add_policy(enforcer, ["alice", "data1", "read"])
 
       assert Enforcer.enforce(enforcer, ["alice", "data1", "read"])
     end
@@ -89,7 +92,7 @@ defmodule CasbinEx2.BuiltinOperatorsTest do
 
       {:ok, enforcer} = create_test_enforcer_with_matcher("timeMatch('_', '#{end_time}')")
 
-      {:ok, enforcer} = CasbinEx2.Management.add_policy(enforcer, ["alice", "data1", "read"])
+      {:ok, enforcer} = Management.add_policy(enforcer, ["alice", "data1", "read"])
 
       assert Enforcer.enforce(enforcer, ["alice", "data1", "read"])
     end
@@ -100,7 +103,7 @@ defmodule CasbinEx2.BuiltinOperatorsTest do
 
       {:ok, enforcer} = create_test_enforcer_with_matcher("timeMatch('#{start_time}', '_')")
 
-      {:ok, enforcer} = CasbinEx2.Management.add_policy(enforcer, ["alice", "data1", "read"])
+      {:ok, enforcer} = Management.add_policy(enforcer, ["alice", "data1", "read"])
 
       assert Enforcer.enforce(enforcer, ["alice", "data1", "read"])
     end
@@ -113,7 +116,7 @@ defmodule CasbinEx2.BuiltinOperatorsTest do
       {:ok, enforcer} =
         create_test_enforcer_with_matcher("timeMatch('#{start_time}', '#{end_time}')")
 
-      {:ok, enforcer} = CasbinEx2.Management.add_policy(enforcer, ["alice", "data1", "read"])
+      {:ok, enforcer} = Management.add_policy(enforcer, ["alice", "data1", "read"])
 
       refute Enforcer.enforce(enforcer, ["alice", "data1", "read"])
     end
@@ -126,7 +129,7 @@ defmodule CasbinEx2.BuiltinOperatorsTest do
       {:ok, enforcer} =
         create_test_enforcer_with_matcher("timeMatch('#{start_time}', '#{end_time}')")
 
-      {:ok, enforcer} = CasbinEx2.Management.add_policy(enforcer, ["alice", "data1", "read"])
+      {:ok, enforcer} = Management.add_policy(enforcer, ["alice", "data1", "read"])
 
       refute Enforcer.enforce(enforcer, ["alice", "data1", "read"])
     end
@@ -148,12 +151,12 @@ defmodule CasbinEx2.BuiltinOperatorsTest do
       m = r.sub == p.sub && keyMatch(r.obj, p.obj) && r.act == p.act
       """
 
-      {:ok, model} = CasbinEx2.Model.load_model_from_text(model_text)
+      {:ok, model} = Model.load_model_from_text(model_text)
 
       {:ok, enforcer} =
-        Enforcer.init_with_model_and_adapter(model, CasbinEx2.Adapter.MemoryAdapter.new())
+        Enforcer.init_with_model_and_adapter(model, MemoryAdapter.new())
 
-      {:ok, enforcer} = CasbinEx2.Management.add_policy(enforcer, ["alice", "/data/*", "read"])
+      {:ok, enforcer} = Management.add_policy(enforcer, ["alice", "/data/*", "read"])
 
       assert Enforcer.enforce(enforcer, ["alice", "/data/file1", "read"])
       assert Enforcer.enforce(enforcer, ["alice", "/data/dir/file2", "read"])
@@ -175,12 +178,12 @@ defmodule CasbinEx2.BuiltinOperatorsTest do
       m = ipMatch(r.ip, p.network)
       """
 
-      {:ok, model} = CasbinEx2.Model.load_model_from_text(model_text)
+      {:ok, model} = Model.load_model_from_text(model_text)
 
       {:ok, enforcer} =
-        Enforcer.init_with_model_and_adapter(model, CasbinEx2.Adapter.MemoryAdapter.new())
+        Enforcer.init_with_model_and_adapter(model, MemoryAdapter.new())
 
-      {:ok, enforcer} = CasbinEx2.Management.add_policy(enforcer, ["192.168.1.0/24"])
+      {:ok, enforcer} = Management.add_policy(enforcer, ["192.168.1.0/24"])
 
       assert Enforcer.enforce(enforcer, ["192.168.1.100"])
       assert Enforcer.enforce(enforcer, ["192.168.1.1"])
@@ -202,12 +205,12 @@ defmodule CasbinEx2.BuiltinOperatorsTest do
       m = globMatch(r.obj, p.obj)
       """
 
-      {:ok, model} = CasbinEx2.Model.load_model_from_text(model_text)
+      {:ok, model} = Model.load_model_from_text(model_text)
 
       {:ok, enforcer} =
-        Enforcer.init_with_model_and_adapter(model, CasbinEx2.Adapter.MemoryAdapter.new())
+        Enforcer.init_with_model_and_adapter(model, MemoryAdapter.new())
 
-      {:ok, enforcer} = CasbinEx2.Management.add_policy(enforcer, ["/data/**/*.txt"])
+      {:ok, enforcer} = Management.add_policy(enforcer, ["/data/**/*.txt"])
 
       assert Enforcer.enforce(enforcer, ["/data/file.txt"])
       assert Enforcer.enforce(enforcer, ["/data/dir/file.txt"])
@@ -232,7 +235,7 @@ defmodule CasbinEx2.BuiltinOperatorsTest do
     m = #{matcher}
     """
 
-    {:ok, model} = CasbinEx2.Model.load_model_from_text(model_text)
-    Enforcer.init_with_model_and_adapter(model, CasbinEx2.Adapter.MemoryAdapter.new())
+    {:ok, model} = Model.load_model_from_text(model_text)
+    Enforcer.init_with_model_and_adapter(model, MemoryAdapter.new())
   end
 end
