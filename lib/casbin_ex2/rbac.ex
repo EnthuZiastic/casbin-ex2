@@ -92,15 +92,13 @@ defmodule CasbinEx2.RBAC do
   def delete_roles_for_user(%Enforcer{} = enforcer, user, domain \\ "") do
     roles = get_roles_for_user(enforcer, user, domain)
 
-    if Enum.empty?(roles) do
-      {:error, "user has no roles"}
-    else
-      rules =
-        Enum.map(roles, fn role ->
-          if domain == "", do: [user, role], else: [user, role, domain]
-        end)
+    case roles do
+      [] ->
+        {:error, "user has no roles"}
 
-      remove_grouping_policies(enforcer, rules)
+      _ ->
+        rules = build_role_rules(roles, user, domain)
+        remove_grouping_policies(enforcer, rules)
     end
   end
 
@@ -109,62 +107,27 @@ defmodule CasbinEx2.RBAC do
   Returns false if the user does not exist.
   """
   def delete_user(%Enforcer{grouping_policies: grouping_policies} = enforcer, user) do
-    user_rules =
-      grouping_policies
-      |> Enum.flat_map(fn {_ptype, rules} ->
-        Enum.filter(rules, fn rule -> List.first(rule) == user end)
-      end)
+    user_rules = find_user_rules(grouping_policies, user)
 
-    if Enum.empty?(user_rules) do
-      {:error, "user does not exist"}
-    else
-      # Remove all grouping policies where user is the subject
-      updated_grouping_policies =
-        Enum.reduce(grouping_policies, %{}, fn {ptype, rules}, acc ->
-          filtered_rules = Enum.reject(rules, fn rule -> List.first(rule) == user end)
-          Map.put(acc, ptype, filtered_rules)
-        end)
+    case user_rules do
+      [] ->
+        {:error, "user does not exist"}
 
-      # Also remove all policies where user is the subject
-      updated_policies =
-        Enum.reduce(enforcer.policies, %{}, fn {ptype, rules}, acc ->
-          filtered_rules = Enum.reject(rules, fn rule -> List.first(rule) == user end)
-          Map.put(acc, ptype, filtered_rules)
-        end)
+      _ ->
+        updated_grouping_policies = remove_user_from_grouping_policies(grouping_policies, user)
+        updated_policies = remove_user_from_policies(enforcer.policies, user)
 
-      # Also update the role_manager to remove user's roles
-      updated_role_manager =
-        case enforcer.role_manager do
-          nil ->
-            nil
+        updated_role_manager =
+          update_role_manager_for_user_deletion(enforcer.role_manager, user, user_rules)
 
-          role_manager ->
-            # Get all roles the user has and remove them from role_manager
-            user_roles =
-              user_rules
-              |> Enum.map(fn rule ->
-                case rule do
-                  [_user, role] -> {role, ""}
-                  [_user, role, domain] -> {role, domain}
-                  _ -> nil
-                end
-              end)
-              |> Enum.reject(&is_nil/1)
+        updated_enforcer = %{
+          enforcer
+          | grouping_policies: updated_grouping_policies,
+            policies: updated_policies,
+            role_manager: updated_role_manager
+        }
 
-            # Remove each role link from the role_manager
-            Enum.reduce(user_roles, role_manager, fn {role, domain}, rm ->
-              CasbinEx2.RoleManager.delete_link(rm, user, role, domain)
-            end)
-        end
-
-      updated_enforcer = %{
-        enforcer
-        | grouping_policies: updated_grouping_policies,
-          policies: updated_policies,
-          role_manager: updated_role_manager
-      }
-
-      {:ok, updated_enforcer}
+        {:ok, updated_enforcer}
     end
   end
 
@@ -173,54 +136,25 @@ defmodule CasbinEx2.RBAC do
   Returns false if the role does not exist.
   """
   def delete_role(%Enforcer{grouping_policies: grouping_policies} = enforcer, role) do
-    role_rules =
-      grouping_policies
-      |> Enum.flat_map(fn {_ptype, rules} ->
-        Enum.filter(rules, fn rule -> Enum.at(rule, 1) == role end)
-      end)
+    role_rules = find_role_rules(grouping_policies, role)
 
-    if Enum.empty?(role_rules) do
-      {:error, "role does not exist"}
-    else
-      # Remove all grouping policies where role is the object
-      updated_grouping_policies =
-        Enum.reduce(grouping_policies, %{}, fn {ptype, rules}, acc ->
-          filtered_rules = Enum.reject(rules, fn rule -> Enum.at(rule, 1) == role end)
-          Map.put(acc, ptype, filtered_rules)
-        end)
+    case role_rules do
+      [] ->
+        {:error, "role does not exist"}
 
-      # Also update the role_manager to remove role links
-      updated_role_manager =
-        case enforcer.role_manager do
-          nil ->
-            nil
+      _ ->
+        updated_grouping_policies = remove_role_from_grouping_policies(grouping_policies, role)
 
-          role_manager ->
-            # Get all users that have this role and remove the links
-            user_role_pairs =
-              role_rules
-              |> Enum.map(fn rule ->
-                case rule do
-                  [user, _role] -> {user, ""}
-                  [user, _role, domain] -> {user, domain}
-                  _ -> nil
-                end
-              end)
-              |> Enum.reject(&is_nil/1)
+        updated_role_manager =
+          update_role_manager_for_role_deletion(enforcer.role_manager, role, role_rules)
 
-            # Remove each role link from the role_manager
-            Enum.reduce(user_role_pairs, role_manager, fn {user, domain}, rm ->
-              CasbinEx2.RoleManager.delete_link(rm, user, role, domain)
-            end)
-        end
+        updated_enforcer = %{
+          enforcer
+          | grouping_policies: updated_grouping_policies,
+            role_manager: updated_role_manager
+        }
 
-      updated_enforcer = %{
-        enforcer
-        | grouping_policies: updated_grouping_policies,
-          role_manager: updated_role_manager
-      }
-
-      {:ok, updated_enforcer}
+        {:ok, updated_enforcer}
     end
   end
 
@@ -230,30 +164,16 @@ defmodule CasbinEx2.RBAC do
   """
   def delete_permission(%Enforcer{policies: policies} = enforcer, permission)
       when is_list(permission) do
-    permission_rules =
-      policies
-      |> Enum.flat_map(fn {_ptype, rules} ->
-        Enum.filter(rules, fn rule ->
-          Enum.drop(rule, 1) == permission
-        end)
-      end)
+    permission_rules = find_permission_rules(policies, permission)
 
-    if Enum.empty?(permission_rules) do
-      {:error, "permission does not exist"}
-    else
-      # Remove all policies that match the permission
-      updated_policies =
-        Enum.reduce(policies, %{}, fn {ptype, rules}, acc ->
-          filtered_rules =
-            Enum.reject(rules, fn rule ->
-              Enum.drop(rule, 1) == permission
-            end)
+    case permission_rules do
+      [] ->
+        {:error, "permission does not exist"}
 
-          Map.put(acc, ptype, filtered_rules)
-        end)
-
-      updated_enforcer = %{enforcer | policies: updated_policies}
-      {:ok, updated_enforcer}
+      _ ->
+        updated_policies = remove_permission_from_policies(policies, permission)
+        updated_enforcer = %{enforcer | policies: updated_policies}
+        {:ok, updated_enforcer}
     end
   end
 
@@ -325,33 +245,8 @@ defmodule CasbinEx2.RBAC do
     policies
     |> Enum.flat_map(fn {_ptype, policy_list} ->
       policy_list
-      |> Enum.filter(fn rule ->
-        case rule do
-          [^user | _rest] when domain == "" ->
-            true
-
-          [^user | rest] ->
-            # Check if domain matches (domain is usually the last element)
-            List.last(rest) == domain
-
-          _ ->
-            false
-        end
-      end)
-      |> Enum.map(fn rule ->
-        case rule do
-          [^user | rest] when domain == "" ->
-            rest
-
-          [^user | rest] ->
-            # Remove domain from the end if it matches
-            if List.last(rest) == domain do
-              List.delete_at(rest, -1)
-            else
-              rest
-            end
-        end
-      end)
+      |> Enum.filter(&filter_user_rule(&1, user, domain))
+      |> Enum.map(&extract_permission_from_rule(&1, user, domain))
     end)
   end
 
@@ -364,25 +259,9 @@ defmodule CasbinEx2.RBAC do
         user,
         domain \\ ""
       ) do
-    case Map.get(policies, ptype) do
-      nil ->
-        []
-
-      policy_list ->
-        Enum.filter(policy_list, fn rule ->
-          case rule do
-            [^user | _rest] when domain == "" ->
-              true
-
-            [^user | rest] ->
-              # Check if domain matches (domain is usually the last element)
-              List.last(rest) == domain
-
-            _ ->
-              false
-          end
-        end)
-    end
+    policies
+    |> Map.get(ptype, [])
+    |> Enum.filter(&filter_user_rule(&1, user, domain))
   end
 
   @doc """
@@ -403,46 +282,8 @@ defmodule CasbinEx2.RBAC do
         domain \\ ""
       ) do
     case role_manager do
-      nil ->
-        []
-
-      rm ->
-        # Get all roles recursively
-        case CasbinEx2.RoleManager.get_roles(rm, user, domain) do
-          {:ok, direct_roles} ->
-            # Get implicit roles by traversing the role hierarchy
-            direct_roles
-            |> Enum.reduce(MapSet.new(), fn role, acc ->
-              case CasbinEx2.RoleManager.get_roles(rm, role, domain) do
-                {:ok, indirect_roles} ->
-                  MapSet.union(acc, MapSet.new([role | indirect_roles]))
-
-                {:error, _} ->
-                  MapSet.put(acc, role)
-              end
-            end)
-            |> MapSet.to_list()
-
-          {:error, _} ->
-            []
-
-          direct_roles when is_list(direct_roles) ->
-            # Handle case where RoleManager returns list directly
-            direct_roles
-            |> Enum.reduce(MapSet.new(), fn role, acc ->
-              case CasbinEx2.RoleManager.get_roles(rm, role, domain) do
-                {:ok, indirect_roles} ->
-                  MapSet.union(acc, MapSet.new([role | indirect_roles]))
-
-                {:error, _} ->
-                  MapSet.put(acc, role)
-
-                indirect_roles when is_list(indirect_roles) ->
-                  MapSet.union(acc, MapSet.new([role | indirect_roles]))
-              end
-            end)
-            |> MapSet.to_list()
-        end
+      nil -> []
+      rm -> get_roles_recursively(rm, user, domain)
     end
   end
 
@@ -474,13 +315,7 @@ defmodule CasbinEx2.RBAC do
     grouping_policies
     |> Enum.flat_map(fn {_ptype, policy_list} ->
       policy_list
-      |> Enum.filter(fn rule ->
-        case rule do
-          [_user, ^role, ^domain] -> true
-          [_user, ^role] when domain == "" -> true
-          _ -> false
-        end
-      end)
+      |> Enum.filter(&filter_role_rule(&1, role, domain))
       |> Enum.map(fn [user | _] -> user end)
     end)
     |> Enum.uniq()
@@ -493,13 +328,7 @@ defmodule CasbinEx2.RBAC do
     grouping_policies
     |> Enum.flat_map(fn {_ptype, policy_list} ->
       policy_list
-      |> Enum.filter(fn rule ->
-        case rule do
-          [^user, _role, ^domain] -> true
-          [^user, _role] when domain == "" -> true
-          _ -> false
-        end
-      end)
+      |> Enum.filter(&filter_user_domain_rule(&1, user, domain))
       |> Enum.map(fn [_user, role | _] -> role end)
     end)
     |> Enum.uniq()
@@ -510,20 +339,7 @@ defmodule CasbinEx2.RBAC do
   """
   def get_permissions_for_user_in_domain(%Enforcer{policies: policies} = enforcer, user, domain) do
     # Get direct permissions
-    direct_permissions =
-      policies
-      |> Enum.flat_map(fn {_ptype, policy_list} ->
-        Enum.filter(policy_list, fn rule ->
-          case rule do
-            [^user | rest] ->
-              # Check if domain matches (domain is usually the last element)
-              List.last(rest) == domain
-
-            _ ->
-              false
-          end
-        end)
-      end)
+    direct_permissions = get_direct_permissions_in_domain(policies, user, domain)
 
     # Get permissions through roles in this domain
     roles = get_roles_for_user_in_domain(enforcer, user, domain)
@@ -647,5 +463,213 @@ defmodule CasbinEx2.RBAC do
   defp has_named_grouping_policy(%Enforcer{grouping_policies: grouping_policies}, ptype, params) do
     policy_list = Map.get(grouping_policies, ptype, [])
     params in policy_list
+  end
+
+  # Helper functions for delete_user
+  defp find_user_rules(grouping_policies, user) do
+    grouping_policies
+    |> Enum.flat_map(fn {_ptype, rules} ->
+      Enum.filter(rules, fn rule -> List.first(rule) == user end)
+    end)
+  end
+
+  defp remove_user_from_grouping_policies(grouping_policies, user) do
+    Enum.reduce(grouping_policies, %{}, fn {ptype, rules}, acc ->
+      filtered_rules = Enum.reject(rules, fn rule -> List.first(rule) == user end)
+      Map.put(acc, ptype, filtered_rules)
+    end)
+  end
+
+  defp remove_user_from_policies(policies, user) do
+    Enum.reduce(policies, %{}, fn {ptype, rules}, acc ->
+      filtered_rules = Enum.reject(rules, fn rule -> List.first(rule) == user end)
+      Map.put(acc, ptype, filtered_rules)
+    end)
+  end
+
+  defp update_role_manager_for_user_deletion(nil, _user, _user_rules), do: nil
+
+  defp update_role_manager_for_user_deletion(role_manager, user, user_rules) do
+    user_roles = extract_user_roles(user_rules)
+
+    Enum.reduce(user_roles, role_manager, fn {role, domain}, rm ->
+      CasbinEx2.RoleManager.delete_link(rm, user, role, domain)
+    end)
+  end
+
+  defp extract_user_roles(user_rules) do
+    user_rules
+    |> Enum.map(fn rule ->
+      case rule do
+        [_user, role] -> {role, ""}
+        [_user, role, domain] -> {role, domain}
+        _ -> nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # Helper functions for delete_role
+  defp find_role_rules(grouping_policies, role) do
+    grouping_policies
+    |> Enum.flat_map(fn {_ptype, rules} ->
+      Enum.filter(rules, fn rule -> Enum.at(rule, 1) == role end)
+    end)
+  end
+
+  defp remove_role_from_grouping_policies(grouping_policies, role) do
+    Enum.reduce(grouping_policies, %{}, fn {ptype, rules}, acc ->
+      filtered_rules = Enum.reject(rules, fn rule -> Enum.at(rule, 1) == role end)
+      Map.put(acc, ptype, filtered_rules)
+    end)
+  end
+
+  defp update_role_manager_for_role_deletion(nil, _role, _role_rules), do: nil
+
+  defp update_role_manager_for_role_deletion(role_manager, role, role_rules) do
+    user_role_pairs = extract_user_role_pairs(role_rules)
+
+    Enum.reduce(user_role_pairs, role_manager, fn {user, domain}, rm ->
+      CasbinEx2.RoleManager.delete_link(rm, user, role, domain)
+    end)
+  end
+
+  defp extract_user_role_pairs(role_rules) do
+    role_rules
+    |> Enum.map(fn rule ->
+      case rule do
+        [user, _role] -> {user, ""}
+        [user, _role, domain] -> {user, domain}
+        _ -> nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # Helper functions for delete_permission
+  defp find_permission_rules(policies, permission) do
+    policies
+    |> Enum.flat_map(fn {_ptype, rules} ->
+      Enum.filter(rules, fn rule ->
+        Enum.drop(rule, 1) == permission
+      end)
+    end)
+  end
+
+  defp remove_permission_from_policies(policies, permission) do
+    Enum.reduce(policies, %{}, fn {ptype, rules}, acc ->
+      filtered_rules =
+        Enum.reject(rules, fn rule ->
+          Enum.drop(rule, 1) == permission
+        end)
+
+      Map.put(acc, ptype, filtered_rules)
+    end)
+  end
+
+  # Helper functions for get_permissions_for_user
+  defp filter_user_rule(rule, user, domain) do
+    case rule do
+      [^user | _rest] when domain == "" ->
+        true
+
+      [^user | rest] ->
+        List.last(rest) == domain
+
+      _ ->
+        false
+    end
+  end
+
+  defp extract_permission_from_rule(rule, user, domain) do
+    case rule do
+      [^user | rest] when domain == "" ->
+        rest
+
+      [^user | rest] ->
+        if List.last(rest) == domain do
+          List.delete_at(rest, -1)
+        else
+          rest
+        end
+    end
+  end
+
+  # Helper functions for get_implicit_roles_for_user
+  defp get_roles_recursively(role_manager, user, domain) do
+    case CasbinEx2.RoleManager.get_roles(role_manager, user, domain) do
+      {:ok, direct_roles} ->
+        build_implicit_roles_set(role_manager, direct_roles, domain)
+
+      {:error, _} ->
+        []
+
+      direct_roles when is_list(direct_roles) ->
+        build_implicit_roles_set(role_manager, direct_roles, domain)
+    end
+  end
+
+  defp build_implicit_roles_set(role_manager, direct_roles, domain) do
+    direct_roles
+    |> Enum.reduce(MapSet.new(), fn role, acc ->
+      get_role_hierarchy(role_manager, role, domain, acc)
+    end)
+    |> MapSet.to_list()
+  end
+
+  defp get_role_hierarchy(role_manager, role, domain, acc) do
+    updated_acc = MapSet.put(acc, role)
+
+    case CasbinEx2.RoleManager.get_roles(role_manager, role, domain) do
+      {:ok, indirect_roles} ->
+        MapSet.union(updated_acc, MapSet.new(indirect_roles))
+
+      {:error, _} ->
+        updated_acc
+
+      indirect_roles when is_list(indirect_roles) ->
+        MapSet.union(updated_acc, MapSet.new(indirect_roles))
+    end
+  end
+
+  # Helper functions for domain-specific functions
+  defp filter_role_rule(rule, role, domain) do
+    case rule do
+      [_user, ^role, ^domain] -> true
+      [_user, ^role] when domain == "" -> true
+      _ -> false
+    end
+  end
+
+  defp filter_user_domain_rule(rule, user, domain) do
+    case rule do
+      [^user, _role, ^domain] -> true
+      [^user, _role] when domain == "" -> true
+      _ -> false
+    end
+  end
+
+  defp get_direct_permissions_in_domain(policies, user, domain) do
+    policies
+    |> Enum.flat_map(fn {_ptype, policy_list} ->
+      Enum.filter(policy_list, &filter_user_permission_domain_rule(&1, user, domain))
+    end)
+  end
+
+  defp filter_user_permission_domain_rule(rule, user, domain) do
+    case rule do
+      [^user | rest] ->
+        List.last(rest) == domain
+
+      _ ->
+        false
+    end
+  end
+
+  # Helper function for delete_roles_for_user
+  defp build_role_rules(roles, user, domain) do
+    Enum.map(roles, fn role ->
+      if domain == "", do: [user, role], else: [user, role, domain]
+    end)
   end
 end
