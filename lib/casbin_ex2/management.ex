@@ -442,6 +442,68 @@ defmodule CasbinEx2.Management do
   end
 
   @doc """
+  Adds a policy without triggering watcher notifications.
+  Useful in distributed scenarios where the node updates its own policies.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `sec` - Section type: "p" for policy, "g" for grouping
+  - `ptype` - Policy type (e.g., "p", "p2", "g", "g2")
+  - `rule` - The policy rule to add
+
+  ## Examples
+
+      # Add policy without notification
+      {:ok, enforcer} = Management.self_add_policy(enforcer, "p", "p", ["alice", "data1", "read"])
+
+      # Add grouping policy without notification
+      {:ok, enforcer} = Management.self_add_policy(enforcer, "g", "g", ["alice", "admin"])
+  """
+  def self_add_policy(%Enforcer{} = enforcer, sec, ptype, rule) do
+    case sec do
+      "p" -> add_named_policy(enforcer, ptype, rule)
+      "g" -> add_named_grouping_policy(enforcer, ptype, rule)
+      _ -> {:error, "invalid section type, must be 'p' or 'g'"}
+    end
+  end
+
+  @doc """
+  Adds multiple policies without triggering watcher notifications.
+  Returns {:ok, enforcer, count} where count is the number of successfully added rules.
+  """
+  def self_add_policies_ex(%Enforcer{} = enforcer, sec, ptype, rules) do
+    case sec do
+      "p" -> add_named_policies_ex(enforcer, ptype, rules)
+      "g" -> add_named_grouping_policies_ex(enforcer, ptype, rules)
+      _ -> {:error, "invalid section type, must be 'p' or 'g'"}
+    end
+  end
+
+  @doc """
+  Removes a policy without triggering watcher notifications.
+  Useful in distributed scenarios where the node updates its own policies.
+  """
+  def self_remove_policy(%Enforcer{} = enforcer, sec, ptype, rule) do
+    case sec do
+      "p" -> remove_named_policy(enforcer, ptype, rule)
+      "g" -> remove_named_grouping_policy(enforcer, ptype, rule)
+      _ -> {:error, "invalid section type, must be 'p' or 'g'"}
+    end
+  end
+
+  @doc """
+  Updates a policy without triggering watcher notifications.
+  Useful in distributed scenarios where the node updates its own policies.
+  """
+  def self_update_policy(%Enforcer{} = enforcer, sec, ptype, old_rule, new_rule) do
+    case sec do
+      "p" -> update_named_policy(enforcer, ptype, old_rule, new_rule)
+      "g" -> update_named_grouping_policy(enforcer, ptype, old_rule, new_rule)
+      _ -> {:error, "invalid section type, must be 'p' or 'g'"}
+    end
+  end
+
+  @doc """
   Adds a custom function to the enforcer's function map.
 
   The function can then be used in matcher expressions.
