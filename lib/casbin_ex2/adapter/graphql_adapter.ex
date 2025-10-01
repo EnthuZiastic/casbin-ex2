@@ -653,19 +653,97 @@ defmodule CasbinEx2.Adapter.GraphQLAdapter do
   # Mock HTTP client for testing
   defmodule MockClient do
     @moduledoc false
+    use Agent
 
-    def post(_url, _body, _headers, _options) do
-      {:ok,
-       %{
-         status_code: 200,
-         body:
-           Jason.encode!(%{
-             data: %{
-               policies: [],
-               groupingPolicies: []
-             }
-           })
-       }}
+    def start_link(_opts \\ []) do
+      Agent.start_link(
+        fn -> %{response: nil, error: nil, headers: [], variables: %{}, timeout: nil} end,
+        name: __MODULE__
+      )
+    end
+
+    def mock_response(response_data) do
+      ensure_started()
+
+      Agent.update(__MODULE__, fn state ->
+        %{state | response: response_data, error: nil}
+      end)
+    end
+
+    def mock_error(error) do
+      ensure_started()
+
+      Agent.update(__MODULE__, fn state ->
+        %{state | error: error, response: nil}
+      end)
+    end
+
+    def last_headers do
+      ensure_started()
+      Agent.get(__MODULE__, fn state -> state.headers end)
+    end
+
+    def last_variables do
+      ensure_started()
+      Agent.get(__MODULE__, fn state -> state.variables end)
+    end
+
+    def last_timeout do
+      ensure_started()
+      Agent.get(__MODULE__, fn state -> state.timeout end)
+    end
+
+    def post(_url, body, headers, options) do
+      ensure_started()
+
+      # Parse body to extract variables
+      variables =
+        case Jason.decode(body) do
+          {:ok, %{"variables" => vars}} -> vars
+          _ -> %{}
+        end
+
+      # Store request metadata
+      timeout = Keyword.get(options, :recv_timeout)
+
+      Agent.update(__MODULE__, fn state ->
+        %{state | headers: headers, variables: variables, timeout: timeout}
+      end)
+
+      # Return mocked response or error
+      state = Agent.get(__MODULE__, fn s -> s end)
+
+      cond do
+        state.error != nil ->
+          {:error, state.error}
+
+        state.response != nil ->
+          {:ok,
+           %{
+             status_code: 200,
+             body: Jason.encode!(state.response)
+           }}
+
+        true ->
+          {:ok,
+           %{
+             status_code: 200,
+             body:
+               Jason.encode!(%{
+                 data: %{
+                   policies: [],
+                   groupingPolicies: []
+                 }
+               })
+           }}
+      end
+    end
+
+    defp ensure_started do
+      case Process.whereis(__MODULE__) do
+        nil -> start_link()
+        _pid -> :ok
+      end
     end
   end
 end
