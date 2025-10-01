@@ -10,7 +10,9 @@ defmodule CasbinEx2.Enforcer do
   alias CasbinEx2.Adapter
   alias CasbinEx2.Adapter.FileAdapter
   alias CasbinEx2.Logger, as: CasbinLogger
+  alias CasbinEx2.Management
   alias CasbinEx2.Model
+  alias CasbinEx2.RBAC
   alias CasbinEx2.RoleManager
   alias CasbinEx2.Transaction
 
@@ -405,6 +407,106 @@ defmodule CasbinEx2.Enforcer do
 
     result
   end
+
+  # =============================================================================
+  # DELEGATION TO MANAGEMENT AND RBAC MODULES
+  # =============================================================================
+  #
+  # The following functions delegate to separate Management and RBAC modules
+  # to maintain structural parity with the Golang Casbin implementation.
+  # This provides better code organization while maintaining identical API.
+
+  # Management API Delegation (corresponds to management_api.go)
+  defdelegate get_all_subjects(enforcer), to: Management
+  defdelegate get_all_named_subjects(enforcer, ptype), to: Management
+  defdelegate get_all_objects(enforcer), to: Management
+  defdelegate get_all_named_objects(enforcer, ptype), to: Management
+  defdelegate get_all_actions(enforcer), to: Management
+  defdelegate get_all_named_actions(enforcer, ptype), to: Management
+  defdelegate get_all_roles(enforcer), to: Management
+  defdelegate get_all_named_roles(enforcer, ptype), to: Management
+
+  defdelegate get_policy(enforcer), to: Management
+  defdelegate get_named_policy(enforcer, ptype), to: Management
+  defdelegate get_filtered_policy(enforcer, field_index, field_values), to: Management
+
+  defdelegate get_filtered_named_policy(enforcer, ptype, field_index, field_values),
+    to: Management
+
+  defdelegate get_grouping_policy(enforcer), to: Management
+  defdelegate get_named_grouping_policy(enforcer, ptype), to: Management
+  defdelegate get_filtered_grouping_policy(enforcer, field_index, field_values), to: Management
+
+  defdelegate get_filtered_named_grouping_policy(enforcer, ptype, field_index, field_values),
+    to: Management
+
+  defdelegate has_policy(enforcer, params), to: Management
+  defdelegate has_named_policy(enforcer, ptype, params), to: Management
+  defdelegate has_grouping_policy(enforcer, params), to: Management
+  defdelegate has_named_grouping_policy(enforcer, ptype, params), to: Management
+
+  defdelegate add_policy(enforcer, params), to: Management
+  defdelegate add_named_policy(enforcer, ptype, params), to: Management
+  defdelegate add_policies(enforcer, rules), to: Management
+  defdelegate add_named_policies(enforcer, ptype, rules), to: Management
+
+  defdelegate remove_policy(enforcer, params), to: Management
+  defdelegate remove_named_policy(enforcer, ptype, params), to: Management
+  defdelegate remove_policies(enforcer, rules), to: Management
+  defdelegate remove_named_policies(enforcer, ptype, rules), to: Management
+  defdelegate remove_filtered_policy(enforcer, field_index, field_values), to: Management
+
+  defdelegate remove_filtered_named_policy(enforcer, ptype, field_index, field_values),
+    to: Management
+
+  defdelegate update_policy(enforcer, old_rule, new_rule), to: Management
+  defdelegate update_named_policy(enforcer, ptype, old_rule, new_rule), to: Management
+  defdelegate update_policies(enforcer, old_rules, new_rules), to: Management
+  defdelegate update_named_policies(enforcer, ptype, old_rules, new_rules), to: Management
+
+  # RBAC API Delegation (corresponds to rbac_api.go)
+  defdelegate get_roles_for_user(enforcer, user), to: RBAC
+  defdelegate get_roles_for_user(enforcer, user, domain), to: RBAC
+  defdelegate get_users_for_role(enforcer, role), to: RBAC
+  defdelegate get_users_for_role(enforcer, role, domain), to: RBAC
+  defdelegate has_role_for_user(enforcer, user, role), to: RBAC
+  defdelegate has_role_for_user(enforcer, user, role, domain), to: RBAC
+
+  defdelegate add_role_for_user(enforcer, user, role), to: RBAC
+  defdelegate add_role_for_user(enforcer, user, role, domain), to: RBAC
+
+  defdelegate delete_role_for_user(enforcer, user, role), to: RBAC
+  defdelegate delete_role_for_user(enforcer, user, role, domain), to: RBAC
+  defdelegate delete_roles_for_user(enforcer, user), to: RBAC
+  defdelegate delete_roles_for_user(enforcer, user, domain), to: RBAC
+
+  defdelegate delete_user(enforcer, user), to: RBAC
+  defdelegate delete_role(enforcer, role), to: RBAC
+  defdelegate delete_permission(enforcer, permission), to: RBAC
+
+  defdelegate add_permission_for_user(enforcer, user, permission), to: RBAC
+  defdelegate add_permissions_for_user(enforcer, user, permissions), to: RBAC
+  defdelegate delete_permission_for_user(enforcer, user, permission), to: RBAC
+  defdelegate delete_permissions_for_user(enforcer, user), to: RBAC
+
+  defdelegate get_named_permissions_for_user(enforcer, ptype, user), to: RBAC
+  defdelegate get_named_permissions_for_user(enforcer, ptype, user, domain), to: RBAC
+  defdelegate has_permission_for_user(enforcer, user, permission), to: RBAC
+
+  # Domain-specific RBAC functions
+  defdelegate get_users_for_role_in_domain(enforcer, role, domain), to: RBAC
+  defdelegate get_roles_for_user_in_domain(enforcer, user, domain), to: RBAC
+  defdelegate get_permissions_for_user_in_domain(enforcer, user, domain), to: RBAC
+  defdelegate add_role_for_user_in_domain(enforcer, user, role, domain), to: RBAC
+  defdelegate delete_role_for_user_in_domain(enforcer, user, role, domain), to: RBAC
+
+  # =============================================================================
+  # LEGACY IMPLEMENTATIONS (TO BE REMOVED)
+  # =============================================================================
+  #
+  # The following are the original implementations that will be removed
+  # once delegation is confirmed working. They are kept temporarily for
+  # backward compatibility during the transition.
 
   # Policy Management APIs
 
