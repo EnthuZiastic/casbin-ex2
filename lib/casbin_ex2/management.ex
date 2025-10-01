@@ -773,4 +773,115 @@ defmodule CasbinEx2.Management do
       end
     end
   end
+
+  @doc """
+  Updates policies that match the filter with new policies.
+  Delegates to update_filtered_named_policies with "p" type.
+
+  Returns {:ok, enforcer, old_rules} with the list of old rules that were replaced.
+  """
+  def update_filtered_policies(
+        %Enforcer{} = enforcer,
+        new_rules,
+        field_index,
+        field_values
+      ) do
+    update_filtered_named_policies(enforcer, "p", new_rules, field_index, field_values)
+  end
+
+  @doc """
+  Updates named policies that match the filter with new policies.
+
+  The function:
+  1. Finds policies matching the filter
+  2. Removes those policies
+  3. Adds the new policies
+  4. Returns the old policies that were replaced
+
+  Returns {:ok, enforcer, old_rules} with the list of old rules that were replaced.
+  """
+  def update_filtered_named_policies(
+        %Enforcer{policies: policies} = enforcer,
+        ptype,
+        new_rules,
+        field_index,
+        field_values
+      ) do
+    policy_list = Map.get(policies, ptype, [])
+
+    # Find matching policies (these will be removed)
+    old_rules =
+      Enum.filter(policy_list, fn rule ->
+        field_values
+        |> Enum.with_index()
+        |> Enum.all?(fn {value, index} ->
+          actual_index = field_index + index
+          rule_value = Enum.at(rule, actual_index)
+          value == "" or rule_value == value
+        end)
+      end)
+
+    # Remove old rules and add new ones
+    case remove_named_policies(enforcer, ptype, old_rules) do
+      {:ok, updated_enforcer} ->
+        case add_named_policies(updated_enforcer, ptype, new_rules) do
+          {:ok, final_enforcer} ->
+            {:ok, final_enforcer, old_rules}
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Gets policies filtered by a custom matcher expression.
+
+  This is a simplified implementation that evaluates a custom matcher function
+  against each policy rule. In the Golang version, this uses govaluate for
+  expression parsing - here we expect a function that takes a policy rule
+  and returns a boolean.
+
+  Parameters:
+  - enforcer: The enforcer instance
+  - ptype: Policy type (e.g., "p", "p2")
+  - matcher: A function that takes a policy rule (list of strings) and returns true/false
+
+  Returns {:ok, filtered_policies} or {:error, reason}
+
+  Example:
+      matcher = fn rule ->
+        [sub, obj, act] = rule
+        sub == "alice" and act == "read"
+      end
+      {:ok, policies} = get_filtered_named_policy_with_matcher(enforcer, "p", matcher)
+  """
+  def get_filtered_named_policy_with_matcher(
+        %Enforcer{policies: policies},
+        ptype,
+        matcher
+      )
+      when is_function(matcher, 1) do
+    policy_list = Map.get(policies, ptype, [])
+
+    filtered =
+      try do
+        Enum.filter(policy_list, matcher)
+      rescue
+        e ->
+          {:error, "matcher function error: #{inspect(e)}"}
+      end
+
+    case filtered do
+      {:error, _reason} = error -> error
+      result -> {:ok, result}
+    end
+  end
+
+  def get_filtered_named_policy_with_matcher(_enforcer, _ptype, _matcher) do
+    {:error, "matcher must be a function with arity 1"}
+  end
 end
