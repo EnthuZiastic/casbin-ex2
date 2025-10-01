@@ -515,6 +515,20 @@ defmodule CasbinEx2.Enforcer do
   end
 
   @doc """
+  Sets the policy dispatcher at runtime.
+
+  The dispatcher is used to synchronize policy changes across multiple enforcer instances.
+
+  ## Examples
+
+      enforcer = set_dispatcher(enforcer, MyApp.RedisDispatcher)
+  """
+  @spec set_dispatcher(t(), module()) :: t()
+  def set_dispatcher(enforcer, dispatcher) do
+    %{enforcer | dispatcher: dispatcher}
+  end
+
+  @doc """
   Sets the role manager at runtime.
 
   ## Examples
