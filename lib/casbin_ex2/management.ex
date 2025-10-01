@@ -414,6 +414,55 @@ defmodule CasbinEx2.Management do
   end
 
   @doc """
+  Updates a role inheritance rule from old_rule to new_rule.
+  Returns {:ok, enforcer} if successful, {:error, reason} if failed.
+  """
+  def update_grouping_policy(%Enforcer{} = enforcer, old_rule, new_rule) do
+    update_named_grouping_policy(enforcer, "g", old_rule, new_rule)
+  end
+
+  @doc """
+  Updates multiple role inheritance rules from old_rules to new_rules.
+  Returns {:ok, enforcer} if successful, {:error, reason} if failed.
+  """
+  def update_grouping_policies(%Enforcer{} = enforcer, old_rules, new_rules) do
+    update_named_grouping_policies(enforcer, "g", old_rules, new_rules)
+  end
+
+  @doc """
+  Updates a named role inheritance rule from old_rule to new_rule.
+  Returns {:ok, enforcer} if successful, {:error, reason} if failed.
+  """
+  def update_named_grouping_policy(%Enforcer{} = enforcer, ptype, old_rule, new_rule) do
+    case remove_named_grouping_policy(enforcer, ptype, old_rule) do
+      {:ok, updated_enforcer} ->
+        add_named_grouping_policy(updated_enforcer, ptype, new_rule)
+
+      {:error, _reason} ->
+        {:error, :not_found}
+    end
+  end
+
+  @doc """
+  Updates multiple named role inheritance rules from old_rules to new_rules.
+  Returns {:ok, enforcer} if successful, {:error, reason} if failed.
+  """
+  def update_named_grouping_policies(%Enforcer{} = enforcer, ptype, old_rules, new_rules) do
+    if length(old_rules) != length(new_rules) do
+      {:error, "old_rules and new_rules must have same length"}
+    else
+      # Remove all old rules first, then add all new rules
+      case remove_named_grouping_policies(enforcer, ptype, old_rules) do
+        {:ok, updated_enforcer} ->
+          add_named_grouping_policies(updated_enforcer, ptype, new_rules)
+
+        {:error, reason} ->
+          {:error, reason}
+      end
+    end
+  end
+
+  @doc """
   Adds an authorization rule to the current policy.
   Returns {:ok, enforcer} if successful, {:error, reason} if failed.
   """
