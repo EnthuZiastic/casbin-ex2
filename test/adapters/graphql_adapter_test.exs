@@ -624,4 +624,314 @@ defmodule CasbinEx2.Adapter.GraphQLAdapterTest do
       assert variables["filter"]["policyType"] == "p"
     end
   end
+
+  describe "introspect_schema/1 - schema introspection" do
+    setup do
+      # Reset MockClient state
+      case Process.whereis(MockClient) do
+        nil ->
+          MockClient.start_link()
+
+        _pid ->
+          Agent.update(MockClient, fn _state ->
+            %{response: nil, error: nil, headers: [], variables: %{}, timeout: nil}
+          end)
+      end
+
+      {:ok, []}
+    end
+
+    test "successfully introspects GraphQL schema" do
+      adapter =
+        GraphQLAdapter.new(
+          endpoint: "https://api.example.com/graphql",
+          http_client: MockClient,
+          introspection: true
+        )
+
+      MockClient.mock_response(%{
+        "data" => %{
+          "__schema" => %{
+            "types" => [
+              %{
+                "name" => "Policy",
+                "kind" => "OBJECT",
+                "fields" => [
+                  %{"name" => "id", "type" => %{"name" => "ID", "kind" => "SCALAR"}},
+                  %{"name" => "section", "type" => %{"name" => "String", "kind" => "SCALAR"}},
+                  %{"name" => "policyType", "type" => %{"name" => "String", "kind" => "SCALAR"}},
+                  %{"name" => "rule", "type" => %{"name" => "String", "kind" => "LIST"}}
+                ]
+              }
+            ],
+            "queryType" => %{"name" => "Query"},
+            "mutationType" => %{"name" => "Mutation"},
+            "subscriptionType" => %{"name" => "Subscription"}
+          }
+        }
+      })
+
+      assert {:ok, schema} = GraphQLAdapter.introspect_schema(adapter)
+      assert schema["queryType"]["name"] == "Query"
+      assert schema["mutationType"]["name"] == "Mutation"
+      assert schema["subscriptionType"]["name"] == "Subscription"
+      assert is_list(schema["types"])
+    end
+
+    test "handles introspection disabled" do
+      adapter =
+        GraphQLAdapter.new(
+          endpoint: "https://api.example.com/graphql",
+          http_client: MockClient,
+          introspection: false
+        )
+
+      assert {:error, "Schema introspection disabled"} = GraphQLAdapter.introspect_schema(adapter)
+    end
+
+    test "handles introspection errors" do
+      adapter =
+        GraphQLAdapter.new(
+          endpoint: "https://api.example.com/graphql",
+          http_client: MockClient,
+          introspection: true
+        )
+
+      MockClient.mock_response(%{
+        "errors" => [%{"message" => "Introspection is not allowed"}]
+      })
+
+      assert {:error, error} = GraphQLAdapter.introspect_schema(adapter)
+      assert error =~ "Introspection failed"
+    end
+
+    test "handles network errors during introspection" do
+      adapter =
+        GraphQLAdapter.new(
+          endpoint: "https://api.example.com/graphql",
+          http_client: MockClient,
+          introspection: true
+        )
+
+      MockClient.mock_error(:timeout)
+
+      assert {:error, :timeout} = GraphQLAdapter.introspect_schema(adapter)
+    end
+
+    test "validates schema structure" do
+      adapter =
+        GraphQLAdapter.new(
+          endpoint: "https://api.example.com/graphql",
+          http_client: MockClient,
+          introspection: true
+        )
+
+      MockClient.mock_response(%{
+        "data" => %{
+          "__schema" => %{
+            "types" => [],
+            "queryType" => nil,
+            "mutationType" => nil,
+            "subscriptionType" => nil
+          }
+        }
+      })
+
+      assert {:ok, schema} = GraphQLAdapter.introspect_schema(adapter)
+      assert schema["types"] == []
+      assert schema["queryType"] == nil
+    end
+  end
+
+  describe "subscribe_policy_changes/1 - WebSocket subscriptions" do
+    setup do
+      # Reset MockClient state
+      case Process.whereis(MockClient) do
+        nil ->
+          MockClient.start_link()
+
+        _pid ->
+          Agent.update(MockClient, fn _state ->
+            %{response: nil, error: nil, headers: [], variables: %{}, timeout: nil}
+          end)
+      end
+
+      {:ok, []}
+    end
+
+    test "successfully subscribes to policy changes" do
+      adapter =
+        GraphQLAdapter.new(
+          endpoint: "https://api.example.com/graphql",
+          http_client: MockClient,
+          subscriptions: true,
+          websocket_url: "wss://api.example.com/subscriptions"
+        )
+
+      assert {:ok, pid} = GraphQLAdapter.subscribe_policy_changes(adapter)
+      assert is_pid(pid)
+    end
+
+    test "handles subscriptions disabled" do
+      adapter =
+        GraphQLAdapter.new(
+          endpoint: "https://api.example.com/graphql",
+          http_client: MockClient,
+          subscriptions: false
+        )
+
+      assert {:error, "Subscriptions not enabled"} =
+               GraphQLAdapter.subscribe_policy_changes(adapter)
+    end
+
+    test "handles missing WebSocket URL" do
+      adapter =
+        GraphQLAdapter.new(
+          endpoint: "https://api.example.com/graphql",
+          http_client: MockClient,
+          subscriptions: true,
+          websocket_url: nil
+        )
+
+      assert {:error, "WebSocket URL not configured"} =
+               GraphQLAdapter.subscribe_policy_changes(adapter)
+    end
+
+    test "handles WebSocket URL not provided" do
+      adapter =
+        GraphQLAdapter.new(
+          endpoint: "https://api.example.com/graphql",
+          http_client: MockClient,
+          subscriptions: true
+        )
+
+      assert {:error, "WebSocket URL not configured"} =
+               GraphQLAdapter.subscribe_policy_changes(adapter)
+    end
+  end
+
+  describe "validate_query/1 - query validation" do
+    test "validates query with query operation" do
+      query = """
+      query GetPolicies {
+        policies {
+          id
+          rule
+        }
+      }
+      """
+
+      assert :ok = GraphQLAdapter.validate_query(query)
+    end
+
+    test "validates mutation operation" do
+      mutation = """
+      mutation AddPolicy($rule: [String!]!) {
+        addPolicy(rule: $rule) {
+          id
+        }
+      }
+      """
+
+      assert :ok = GraphQLAdapter.validate_query(mutation)
+    end
+
+    test "validates subscription operation" do
+      subscription = """
+      subscription PolicyChanged {
+        policyChanged {
+          event
+        }
+      }
+      """
+
+      assert :ok = GraphQLAdapter.validate_query(subscription)
+    end
+
+    test "rejects invalid query without operation type" do
+      invalid_query = "{ policies }"
+
+      assert {:error, "Invalid GraphQL operation type"} =
+               GraphQLAdapter.validate_query(invalid_query)
+    end
+
+    test "rejects non-string query" do
+      assert {:error, "Query must be a string"} = GraphQLAdapter.validate_query(123)
+      assert {:error, "Query must be a string"} = GraphQLAdapter.validate_query(nil)
+      assert {:error, "Query must be a string"} = GraphQLAdapter.validate_query(%{})
+    end
+
+    test "validates complex nested query" do
+      query = """
+      query GetPoliciesWithGrouping {
+        policies {
+          section
+          policyType
+          rule
+        }
+        groupingPolicies {
+          section
+          groupingType
+          rule
+        }
+      }
+      """
+
+      assert :ok = GraphQLAdapter.validate_query(query)
+    end
+
+    test "validates query with variables" do
+      query = """
+      query LoadFilteredPolicies($filter: PolicyFilter) {
+        policies(filter: $filter) {
+          rule
+        }
+      }
+      """
+
+      assert :ok = GraphQLAdapter.validate_query(query)
+    end
+
+    test "validates mutation with multiple operations" do
+      mutation = """
+      mutation SavePolicies($policies: [PolicyInput!]!, $groupingPolicies: [GroupingPolicyInput!]!) {
+        savePolicies(policies: $policies, groupingPolicies: $groupingPolicies)
+      }
+      """
+
+      assert :ok = GraphQLAdapter.validate_query(mutation)
+    end
+  end
+
+  describe "new_mock/1 - mock adapter creation" do
+    test "creates mock adapter with default settings" do
+      adapter = GraphQLAdapter.new_mock()
+
+      assert adapter.endpoint == "http://localhost:4000/graphql"
+      assert adapter.http_client == MockClient
+      assert adapter.timeout == 30_000
+    end
+
+    test "creates mock adapter with custom options" do
+      adapter =
+        GraphQLAdapter.new_mock(
+          timeout: 5_000,
+          auth: {:bearer, "mock_token"},
+          subscriptions: true
+        )
+
+      assert adapter.endpoint == "http://localhost:4000/graphql"
+      assert adapter.http_client == MockClient
+      assert adapter.timeout == 5_000
+      assert adapter.auth == {:bearer, "mock_token"}
+      assert adapter.subscriptions == true
+    end
+
+    test "mock adapter overrides endpoint if provided" do
+      adapter = GraphQLAdapter.new_mock(endpoint: "http://test:4000/graphql")
+
+      assert adapter.endpoint == "http://test:4000/graphql"
+      assert adapter.http_client == MockClient
+    end
+  end
 end
