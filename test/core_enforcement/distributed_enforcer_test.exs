@@ -20,7 +20,11 @@ defmodule CasbinEx2.DistributedEnforcerTest do
 
     on_exit(fn ->
       if Process.alive?(pid) do
-        GenServer.stop(pid)
+        try do
+          GenServer.stop(pid)
+        catch
+          :exit, _ -> :ok
+        end
       end
     end)
 

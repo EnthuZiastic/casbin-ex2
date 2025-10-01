@@ -105,15 +105,26 @@ defmodule CasbinEx2.Adapter.GraphQLAdapterTest do
   describe "load_policy/2 - loading policies" do
     setup do
       # Ensure MockClient is properly started for each test
-      case Process.whereis(MockClient) do
-        nil ->
-          MockClient.start_link()
-
-        _pid ->
-          Agent.update(MockClient, fn _state ->
-            %{response: nil, error: nil, headers: [], variables: %{}, timeout: nil}
-          end)
+      if Process.whereis(MockClient) do
+        try do
+          Agent.stop(MockClient)
+        catch
+          :exit, _ -> :ok
+        end
       end
+
+      :timer.sleep(10)
+      {:ok, _pid} = MockClient.start_link()
+
+      on_exit(fn ->
+        if Process.whereis(MockClient) do
+          try do
+            Agent.stop(MockClient)
+          catch
+            :exit, _ -> :ok
+          end
+        end
+      end)
 
       adapter =
         GraphQLAdapter.new(
@@ -225,15 +236,26 @@ defmodule CasbinEx2.Adapter.GraphQLAdapterTest do
   describe "load_filtered_policy/3 - filtered loading" do
     setup do
       # Reset MockClient state
-      case Process.whereis(MockClient) do
-        nil ->
-          MockClient.start_link()
-
-        _pid ->
-          Agent.update(MockClient, fn _state ->
-            %{response: nil, error: nil, headers: [], variables: %{}, timeout: nil}
-          end)
+      if Process.whereis(MockClient) do
+        try do
+          Agent.stop(MockClient)
+        catch
+          :exit, _ -> :ok
+        end
       end
+
+      :timer.sleep(10)
+      {:ok, _pid} = MockClient.start_link()
+
+      on_exit(fn ->
+        if Process.whereis(MockClient) do
+          try do
+            Agent.stop(MockClient)
+          catch
+            :exit, _ -> :ok
+          end
+        end
+      end)
 
       adapter =
         GraphQLAdapter.new(
@@ -307,15 +329,26 @@ defmodule CasbinEx2.Adapter.GraphQLAdapterTest do
   describe "load_incremental_filtered_policy/3 - incremental loading" do
     setup do
       # Reset MockClient state
-      case Process.whereis(MockClient) do
-        nil ->
-          MockClient.start_link()
-
-        _pid ->
-          Agent.update(MockClient, fn _state ->
-            %{response: nil, error: nil, headers: [], variables: %{}, timeout: nil}
-          end)
+      if Process.whereis(MockClient) do
+        try do
+          Agent.stop(MockClient)
+        catch
+          :exit, _ -> :ok
+        end
       end
+
+      :timer.sleep(10)
+      {:ok, _pid} = MockClient.start_link()
+
+      on_exit(fn ->
+        if Process.whereis(MockClient) do
+          try do
+            Agent.stop(MockClient)
+          catch
+            :exit, _ -> :ok
+          end
+        end
+      end)
 
       adapter =
         GraphQLAdapter.new(
@@ -354,15 +387,26 @@ defmodule CasbinEx2.Adapter.GraphQLAdapterTest do
   describe "save_policy/3 - saving policies" do
     setup do
       # Reset MockClient state
-      case Process.whereis(MockClient) do
-        nil ->
-          MockClient.start_link()
-
-        _pid ->
-          Agent.update(MockClient, fn _state ->
-            %{response: nil, error: nil, headers: [], variables: %{}, timeout: nil}
-          end)
+      if Process.whereis(MockClient) do
+        try do
+          Agent.stop(MockClient)
+        catch
+          :exit, _ -> :ok
+        end
       end
+
+      :timer.sleep(10)
+      {:ok, _pid} = MockClient.start_link()
+
+      on_exit(fn ->
+        if Process.whereis(MockClient) do
+          try do
+            Agent.stop(MockClient)
+          catch
+            :exit, _ -> :ok
+          end
+        end
+      end)
 
       adapter =
         GraphQLAdapter.new(
@@ -432,15 +476,26 @@ defmodule CasbinEx2.Adapter.GraphQLAdapterTest do
   describe "add_policy/4 - adding single policy" do
     setup do
       # Reset MockClient state
-      case Process.whereis(MockClient) do
-        nil ->
-          MockClient.start_link()
-
-        _pid ->
-          Agent.update(MockClient, fn _state ->
-            %{response: nil, error: nil, headers: [], variables: %{}, timeout: nil}
-          end)
+      if Process.whereis(MockClient) do
+        try do
+          Agent.stop(MockClient)
+        catch
+          :exit, _ -> :ok
+        end
       end
+
+      :timer.sleep(10)
+      {:ok, _pid} = MockClient.start_link()
+
+      on_exit(fn ->
+        if Process.whereis(MockClient) do
+          try do
+            Agent.stop(MockClient)
+          catch
+            :exit, _ -> :ok
+          end
+        end
+      end)
 
       adapter =
         GraphQLAdapter.new(
@@ -510,15 +565,26 @@ defmodule CasbinEx2.Adapter.GraphQLAdapterTest do
   describe "remove_policy/4 - removing single policy" do
     setup do
       # Reset MockClient state
-      case Process.whereis(MockClient) do
-        nil ->
-          MockClient.start_link()
-
-        _pid ->
-          Agent.update(MockClient, fn _state ->
-            %{response: nil, error: nil, headers: [], variables: %{}, timeout: nil}
-          end)
+      if Process.whereis(MockClient) do
+        try do
+          Agent.stop(MockClient)
+        catch
+          :exit, _ -> :ok
+        end
       end
+
+      :timer.sleep(10)
+      {:ok, _pid} = MockClient.start_link()
+
+      on_exit(fn ->
+        if Process.whereis(MockClient) do
+          try do
+            Agent.stop(MockClient)
+          catch
+            :exit, _ -> :ok
+          end
+        end
+      end)
 
       adapter =
         GraphQLAdapter.new(
@@ -575,15 +641,26 @@ defmodule CasbinEx2.Adapter.GraphQLAdapterTest do
   describe "remove_filtered_policy/5 - filtered removal" do
     setup do
       # Reset MockClient state
-      case Process.whereis(MockClient) do
-        nil ->
-          MockClient.start_link()
-
-        _pid ->
-          Agent.update(MockClient, fn _state ->
-            %{response: nil, error: nil, headers: [], variables: %{}, timeout: nil}
-          end)
+      if Process.whereis(MockClient) do
+        try do
+          Agent.stop(MockClient)
+        catch
+          :exit, _ -> :ok
+        end
       end
+
+      :timer.sleep(10)
+      {:ok, _pid} = MockClient.start_link()
+
+      on_exit(fn ->
+        if Process.whereis(MockClient) do
+          try do
+            Agent.stop(MockClient)
+          catch
+            :exit, _ -> :ok
+          end
+        end
+      end)
 
       adapter =
         GraphQLAdapter.new(
@@ -628,15 +705,26 @@ defmodule CasbinEx2.Adapter.GraphQLAdapterTest do
   describe "introspect_schema/1 - schema introspection" do
     setup do
       # Reset MockClient state
-      case Process.whereis(MockClient) do
-        nil ->
-          MockClient.start_link()
-
-        _pid ->
-          Agent.update(MockClient, fn _state ->
-            %{response: nil, error: nil, headers: [], variables: %{}, timeout: nil}
-          end)
+      if Process.whereis(MockClient) do
+        try do
+          Agent.stop(MockClient)
+        catch
+          :exit, _ -> :ok
+        end
       end
+
+      :timer.sleep(10)
+      {:ok, _pid} = MockClient.start_link()
+
+      on_exit(fn ->
+        if Process.whereis(MockClient) do
+          try do
+            Agent.stop(MockClient)
+          catch
+            :exit, _ -> :ok
+          end
+        end
+      end)
 
       {:ok, []}
     end
@@ -746,15 +834,26 @@ defmodule CasbinEx2.Adapter.GraphQLAdapterTest do
   describe "subscribe_policy_changes/1 - WebSocket subscriptions" do
     setup do
       # Reset MockClient state
-      case Process.whereis(MockClient) do
-        nil ->
-          MockClient.start_link()
-
-        _pid ->
-          Agent.update(MockClient, fn _state ->
-            %{response: nil, error: nil, headers: [], variables: %{}, timeout: nil}
-          end)
+      if Process.whereis(MockClient) do
+        try do
+          Agent.stop(MockClient)
+        catch
+          :exit, _ -> :ok
+        end
       end
+
+      :timer.sleep(10)
+      {:ok, _pid} = MockClient.start_link()
+
+      on_exit(fn ->
+        if Process.whereis(MockClient) do
+          try do
+            Agent.stop(MockClient)
+          catch
+            :exit, _ -> :ok
+          end
+        end
+      end)
 
       {:ok, []}
     end
