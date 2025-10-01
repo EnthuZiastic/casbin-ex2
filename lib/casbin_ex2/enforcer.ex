@@ -1866,20 +1866,20 @@ defmodule CasbinEx2.Enforcer do
 
   defp evaluate_single_expression(expr, request, policy, function_map) do
     cond do
-      # Handle function calls like "ipMatch(r.sub, p.sub)"
-      String.contains?(expr, "(") and String.contains?(expr, ")") ->
-        evaluate_function_call(expr, request, policy, function_map)
-
-      # Handle equality comparisons like "r.obj == p.obj"
+      # Handle equality comparisons (including those with function calls)
       String.contains?(expr, "==") ->
-        evaluate_equality(expr, request, policy)
+        evaluate_equality(expr, request, policy, function_map)
 
       # Handle other comparisons (>=, <=, etc.)
       String.contains?(expr, ">=") ->
-        evaluate_comparison(expr, request, policy, ">=")
+        evaluate_comparison(expr, request, policy, function_map, ">=")
 
       String.contains?(expr, "<=") ->
-        evaluate_comparison(expr, request, policy, "<=")
+        evaluate_comparison(expr, request, policy, function_map, "<=")
+
+      # Handle function calls like "ipMatch(r.sub, p.sub)"
+      String.contains?(expr, "(") and String.contains?(expr, ")") ->
+        evaluate_function_call(expr, request, policy, function_map)
 
       true ->
         {:error, "Unsupported expression: #{expr}"}
@@ -1922,46 +1922,135 @@ defmodule CasbinEx2.Enforcer do
         substitute_parameter(String.trim(arg), request, policy)
       end)
 
-    case {substituted_args, func_name} do
-      {[arg1, arg2], "g"} ->
-        # Call g function with 2 arguments, adding empty string as 3rd arg
-        result = func.(arg1, arg2, "")
-        {:ok, result}
+    result =
+      case {substituted_args, func_name} do
+        {[arg1, arg2], "g"} ->
+          # Call g function with 2 arguments, adding empty string as 3rd arg
+          func.(arg1, arg2, "")
 
-      {[arg1, arg2], _} ->
-        # Call regular function with 2 arguments (like ipMatch, keyMatch, etc.)
-        result = func.(arg1, arg2)
-        {:ok, result}
+        {[arg1, arg2], _} ->
+          # Call regular function with 2 arguments (like ipMatch, keyMatch, etc.)
+          func.(arg1, arg2)
 
-      {[arg1, arg2, arg3], _} ->
-        # Call the function with 3 arguments (like g(r.sub, p.sub, r.dom))
-        result = func.(arg1, arg2, arg3)
-        {:ok, result}
+        {[arg1, arg2, arg3], _} ->
+          # Call the function with 3 arguments (like g(r.sub, p.sub, r.dom))
+          func.(arg1, arg2, arg3)
 
-      _ ->
-        {:error, "Function calls with #{length(substituted_args)} arguments not supported yet"}
+        _ ->
+          {:error, "Function calls with #{length(substituted_args)} arguments not supported yet"}
+      end
+
+    case result do
+      {:error, _} = error -> error
+      value -> {:ok, to_boolean(value)}
     end
   rescue
     e -> {:error, "Function call error: #{inspect(e)}"}
   end
 
-  defp evaluate_equality(expr, request, policy) do
-    [left, right] = String.split(expr, "==") |> Enum.map(&String.trim/1)
+  # Call function without boolean conversion (for use in comparisons)
+  defp call_function_raw(func, args, request, policy, func_name) do
+    # Substitute r.* and p.* values
+    substituted_args =
+      Enum.map(args, fn arg ->
+        substitute_parameter(String.trim(arg), request, policy)
+      end)
 
-    left_val = substitute_parameter(left, request, policy)
-    right_val = substitute_parameter(right, request, policy)
+    result =
+      case {substituted_args, func_name} do
+        {[arg1, arg2], "g"} ->
+          # Call g function with 2 arguments, adding empty string as 3rd arg
+          func.(arg1, arg2, "")
+
+        {[arg1, arg2], _} ->
+          # Call regular function with 2 arguments (like ipMatch, keyMatch, etc.)
+          func.(arg1, arg2)
+
+        {[arg1, arg2, arg3], _} ->
+          # Call the function with 3 arguments (like g(r.sub, p.sub, r.dom))
+          func.(arg1, arg2, arg3)
+
+        _ ->
+          {:error, "Function calls with #{length(substituted_args)} arguments not supported yet"}
+      end
+
+    case result do
+      {:error, _} = error -> error
+      value -> value
+    end
+  rescue
+    e -> {:error, "Function call error: #{inspect(e)}"}
+  end
+
+  # Convert various types to boolean
+  # This matches the behavior of Go's truthiness evaluation
+  # credo:disable-for-next-line Credo.Check.Refactor.CyclomaticComplexity
+  defp to_boolean(value) do
+    cond do
+      value == true -> true
+      value == false -> false
+      value == nil -> false
+      value == "" -> false
+      value == 0 -> false
+      value == 0.0 -> false
+      value == [] -> false
+      is_binary(value) -> true
+      is_number(value) -> true
+      is_list(value) -> true
+      true -> true
+    end
+  end
+
+  defp evaluate_equality(expr, request, policy, function_map) do
+    [left, right] = String.split(expr, "==", parts: 2) |> Enum.map(&String.trim/1)
+
+    left_val = evaluate_expression_side(left, request, policy, function_map)
+    right_val = evaluate_expression_side(right, request, policy, function_map)
 
     {:ok, left_val == right_val}
   end
 
-  defp evaluate_comparison(expr, request, policy, operator) do
-    [left, right] = String.split(expr, operator) |> Enum.map(&String.trim/1)
+  defp evaluate_comparison(expr, request, policy, function_map, operator) do
+    [left, right] = String.split(expr, operator, parts: 2) |> Enum.map(&String.trim/1)
 
-    left_val = substitute_parameter(left, request, policy)
-    right_val = substitute_parameter(right, request, policy)
+    left_val = evaluate_expression_side(left, request, policy, function_map)
+    right_val = evaluate_expression_side(right, request, policy, function_map)
 
     result = perform_comparison(left_val, right_val, operator)
     {:ok, result}
+  end
+
+  # Evaluate a side of a comparison, which can be a function call or a simple parameter
+  defp evaluate_expression_side(expr, request, policy, function_map) do
+    cond do
+      # Check if it's a function call
+      String.contains?(expr, "(") and String.contains?(expr, ")") ->
+        case parse_function_call(expr) do
+          {:ok, func_name, args_str} ->
+            case Map.get(function_map, func_name) do
+              nil ->
+                expr
+
+              func ->
+                args = String.split(args_str, ",") |> Enum.map(&String.trim/1)
+                call_function_raw(func, args, request, policy, func_name)
+            end
+
+          {:error, _} ->
+            expr
+        end
+
+      # Check if it's a quoted string
+      String.starts_with?(expr, "'") and String.ends_with?(expr, "'") ->
+        String.slice(expr, 1..-2//1)
+
+      String.starts_with?(expr, "\"") and String.ends_with?(expr, "\"") ->
+        String.slice(expr, 1..-2//1)
+
+      # Otherwise substitute parameter
+      true ->
+        substitute_parameter(expr, request, policy)
+    end
   end
 
   defp perform_comparison(left_val, right_val, operator) do
@@ -1997,6 +2086,10 @@ defmodule CasbinEx2.Enforcer do
 
   defp substitute_parameter("r.obj", request, _policy) do
     case length(request) do
+      # Single-field: [obj]
+      1 ->
+        Enum.at(request, 0, "")
+
       # Standard: [sub, obj, act]
       3 ->
         Enum.at(request, 1, "")
@@ -2053,6 +2146,8 @@ defmodule CasbinEx2.Enforcer do
 
   defp substitute_parameter("p.obj", _request, policy) do
     case length(policy) do
+      # Single-field: [obj]
+      1 -> Enum.at(policy, 0, "")
       # Standard: [sub, obj, act]
       3 -> Enum.at(policy, 1, "")
       # Domain-based: [sub, dom, obj, act]
@@ -2083,6 +2178,21 @@ defmodule CasbinEx2.Enforcer do
   defp substitute_parameter("p.start_time", _request, policy), do: Enum.at(policy, 3, "")
   # Time-based: [sub, obj, act, start_time, end_time]
   defp substitute_parameter("p.end_time", _request, policy), do: Enum.at(policy, 4, "")
+
+  # Handle generic request parameters like r.ip, r.role, etc.
+  defp substitute_parameter("r." <> _field, request, _policy) do
+    # For single-field requests (like r.ip when request = ["192.168.1.100"]),
+    # return the first element
+    Enum.at(request, 0, "")
+  end
+
+  # Handle generic policy parameters like p.network, p.role, etc.
+  defp substitute_parameter("p." <> _field, _request, policy) do
+    # For single-field policies (like p.network when policy = ["192.168.1.0/24"]),
+    # return the first element
+    Enum.at(policy, 0, "")
+  end
+
   # Handle quoted string literals
   defp substitute_parameter(literal, _request, _policy) do
     # Remove surrounding quotes if present
@@ -2287,38 +2397,74 @@ defmodule CasbinEx2.Enforcer do
 
   # Glob matching functions
   defp glob_match(key1, key2) do
-    # Basic glob matching with * and ?
-    pattern =
-      key2
-      |> String.replace("*", ".*")
-      |> String.replace("?", ".")
+    # Glob matching using doublestar-like pattern matching
+    # Supports *, **, ?, character classes []
+    # IO.puts("glob_match(#{inspect(key1)}, #{inspect(key2)})")
+    case compile_glob_pattern(key2) do
+      {:ok, pattern} ->
+        result = String.match?(key1, pattern)
+        # IO.puts("  Pattern: #{inspect(pattern)}, Result: #{result}")
+        result
 
-    String.match?(key1, ~r/^#{pattern}$/)
+      {:error, _} ->
+        false
+    end
   end
 
   defp glob_match2(key1, key2) do
     # Enhanced glob matching with ** for directory matching
-    pattern =
-      key2
-      |> String.replace("**", "__DOUBLESTAR__")
-      |> String.replace("*", "[^/]*")
-      |> String.replace("__DOUBLESTAR__", ".*")
-      |> String.replace("?", "[^/]")
-
-    String.match?(key1, ~r/^#{pattern}$/)
+    # Same as glob_match but kept for API compatibility
+    glob_match(key1, key2)
   end
 
   defp glob_match3(key1, key2) do
     # Advanced glob matching with character classes
-    pattern =
-      key2
-      |> String.replace("**", "__DOUBLESTAR__")
-      |> String.replace("*", "[^/]*")
-      |> String.replace("__DOUBLESTAR__", ".*")
-      |> String.replace("?", "[^/]")
-      |> convert_char_classes()
+    # Same as glob_match but kept for API compatibility
+    glob_match(key1, key2)
+  end
 
-    String.match?(key1, ~r/^#{pattern}$/)
+  # Helper function to compile glob pattern to regex
+  defp compile_glob_pattern(pattern) do
+    # Convert glob pattern to regex pattern
+    # Handle ** (matches any path including zero segments), * (matches any non-slash), ? (matches single char)
+    # and character classes []
+    regex_pattern =
+      pattern
+      |> escape_regex_special_chars()
+      # Replace /**/ with special pattern that matches zero or more path segments
+      |> String.replace("/__DOUBLESTAR__/", "(/.*)?/")
+      # Replace leading /** with pattern that matches zero or more path segments
+      |> String.replace("__DOUBLESTAR__/", "(.*/)?")
+      # Replace trailing /** with pattern that matches zero or more path segments
+      |> String.replace("/__DOUBLESTAR__", "(/.*)?")
+      # Replace standalone ** with .* (matches everything)
+      |> String.replace("__DOUBLESTAR__", ".*")
+      |> String.replace("__STAR__", "[^/]*")
+      |> String.replace("__QUESTION__", ".")
+
+    case Regex.compile("^#{regex_pattern}$") do
+      {:ok, regex} -> {:ok, regex}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp escape_regex_special_chars(pattern) do
+    # First, protect ** by replacing with placeholder
+    pattern = String.replace(pattern, "**", "__DOUBLESTAR__")
+    # Then protect * by replacing with placeholder
+    pattern = String.replace(pattern, "*", "__STAR__")
+    # Then protect ? by replacing with placeholder
+    pattern = String.replace(pattern, "?", "__QUESTION__")
+
+    # Escape regex special characters except []
+    pattern
+    |> String.replace(".", "\\.")
+    |> String.replace("+", "\\+")
+    |> String.replace("(", "\\(")
+    |> String.replace(")", "\\)")
+    |> String.replace("|", "\\|")
+    |> String.replace("{", "\\{")
+    |> String.replace("}", "\\}")
   end
 
   # Helper functions for IP matching
@@ -2403,28 +2549,27 @@ defmodule CasbinEx2.Enforcer do
     end
   end
 
-  defp convert_char_classes(pattern) do
-    # Convert glob character classes [abc] to regex character classes
-    # This is a simplified implementation
-    pattern
-    |> String.replace(~r/\[([^\]]+)\]/, "(\\1)")
-    |> String.replace("!", "^")
-  end
-
   # KeyGet functions - Extract matched parts from patterns
 
   defp key_get(key1, key2) do
     # KeyGet returns the matched part
     # For example, "/foo/bar/foo" matches "/foo/*", returns "bar/foo"
-    case String.split(key2, "*", parts: 2) do
-      [prefix, _suffix] ->
-        if String.starts_with?(key1, prefix) do
-          String.slice(key1, String.length(prefix)..-1//1)
+    case :binary.match(key2, "*") do
+      {i, _} ->
+        if byte_size(key1) > i do
+          prefix1 = :binary.part(key1, 0, i)
+          prefix2 = :binary.part(key2, 0, i)
+
+          if prefix1 == prefix2 do
+            :binary.part(key1, i, byte_size(key1) - i)
+          else
+            ""
+          end
         else
           ""
         end
 
-      _ ->
+      :nomatch ->
         ""
     end
   end
@@ -2433,16 +2578,30 @@ defmodule CasbinEx2.Enforcer do
     # KeyGet2 returns value matched pattern
     # For example, "/resource1" matches "/:resource"
     # if the pathVar == "resource", then "resource1" will be returned
-    pattern =
-      key2
-      |> String.replace("/*", "/.*")
-      |> String.replace(~r/:([^\/]+)/, "(?<\\1>[^/]+)")
+    key2_replaced = String.replace(key2, "/*", "/.*")
 
-    case Regex.compile("^#{pattern}$") do
+    # Find all keys (named parameters like :id, :resource)
+    keys = Regex.scan(~r/:([^\/]+)/, key2_replaced) |> Enum.map(fn [_, k] -> k end)
+
+    # Replace :param with capture groups
+    pattern = Regex.replace(~r/:([^\/]+)/, key2_replaced, "([^/]+)")
+    pattern = "^#{pattern}$"
+
+    case Regex.compile(pattern) do
       {:ok, regex} ->
-        case Regex.named_captures(regex, key1) do
-          nil -> ""
-          captures -> Map.get(captures, path_var, "")
+        case Regex.run(regex, key1) do
+          nil ->
+            ""
+
+          matches ->
+            # matches[0] is the full match, matches[1..] are the captured groups
+            captures = Enum.drop(matches, 1)
+
+            # Find the index of the pathVar in keys and return the corresponding capture
+            case Enum.find_index(keys, &(&1 == path_var)) do
+              nil -> ""
+              index -> Enum.at(captures, index, "")
+            end
         end
 
       {:error, _} ->
@@ -2454,16 +2613,32 @@ defmodule CasbinEx2.Enforcer do
     # KeyGet3 returns value matched pattern
     # For example, "project/proj_project1_admin/" matches "project/proj_{project}_admin/"
     # if the pathVar == "project", then "project1" will be returned
-    pattern =
-      key2
-      |> String.replace("/*", "/.*")
-      |> String.replace(~r/\{([^}]+)\}/, "(?<\\1>[^/]+?)")
+    key2_replaced = String.replace(key2, "/*", "/.*")
 
-    case Regex.compile("^#{pattern}$") do
+    # Find all keys (named parameters like {id}, {project}) - non-greedy match
+    keys =
+      Regex.scan(~r/\{([^}]+?)\}/, key2_replaced)
+      |> Enum.map(fn [_, k] -> k end)
+
+    # Replace {param} with capture groups (non-greedy)
+    pattern = Regex.replace(~r/\{([^}]+?)\}/, key2_replaced, "([^/]+?)")
+    pattern = "^#{pattern}$"
+
+    case Regex.compile(pattern) do
       {:ok, regex} ->
-        case Regex.named_captures(regex, key1) do
-          nil -> ""
-          captures -> Map.get(captures, path_var, "")
+        case Regex.run(regex, key1) do
+          nil ->
+            ""
+
+          matches ->
+            # matches[0] is the full match, matches[1..] are the captured groups
+            captures = Enum.drop(matches, 1)
+
+            # Find the index of the pathVar in keys and return the corresponding capture
+            case Enum.find_index(keys, &(&1 == path_var)) do
+              nil -> ""
+              index -> Enum.at(captures, index, "")
+            end
         end
 
       {:error, _} ->
