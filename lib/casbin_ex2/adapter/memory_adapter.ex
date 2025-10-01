@@ -298,9 +298,29 @@ defmodule CasbinEx2.Adapter.MemoryAdapter do
     actual_table = ensure_table_exists(table_name)
 
     key = {sec, ptype}
-    existing_rules = get_rules(actual_table, key)
-    updated_rules = [rule | existing_rules]
-    :ets.insert(actual_table, {{:policy, key}, updated_rules})
+    policy_key = {:policy, key}
+
+    # Use GenServer-style serialized access for thread safety
+    # Get the mutex process for this table
+    mutex_name = :"#{table_name}_mutex"
+
+    # Ensure mutex exists
+    unless Process.whereis(mutex_name) do
+      Agent.start_link(fn -> :ok end, name: mutex_name)
+    end
+
+    # Perform atomic add within the agent to serialize access
+    Agent.get_and_update(mutex_name, fn _state ->
+      existing_rules = get_rules(actual_table, key)
+
+      # Check if rule already exists to avoid duplicates
+      unless Enum.member?(existing_rules, rule) do
+        updated_rules = [rule | existing_rules]
+        :ets.insert(actual_table, {policy_key, updated_rules})
+      end
+
+      {:ok, :ok}
+    end)
 
     # Update version and notify
     updated_adapter = increment_version(adapter)
