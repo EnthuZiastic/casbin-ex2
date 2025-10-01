@@ -300,7 +300,7 @@ defmodule CasbinEx2.Adapter.ContextAdapter do
   def audit_middleware(operation, args, context) do
     require Logger
 
-    Logger.info("Adapter operation #{operation}", %{
+    Logger.debug("Adapter operation #{operation}", %{
       operation: operation,
       args_count: length(args),
       context: context,

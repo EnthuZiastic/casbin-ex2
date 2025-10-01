@@ -191,7 +191,7 @@ defmodule CasbinEx2.DistributedEnforcer do
     # Monitor cluster nodes
     Enum.each(nodes, &Node.monitor(&1, true))
 
-    Logger.info("Started distributed enforcer #{enforcer_name} with nodes: #{inspect(nodes)}")
+    Logger.debug("Started distributed enforcer #{enforcer_name} with nodes: #{inspect(nodes)}")
 
     {:ok, state}
   end
@@ -314,8 +314,8 @@ defmodule CasbinEx2.DistributedEnforcer do
     {:noreply, state}
   end
 
-  def handle_info({:nodeup, node}, state) do
-    Logger.info("Node #{node} came up in distributed enforcer #{state.enforcer_name}")
+  def handle_info({:nodeup, _node}, state) do
+    Logger.debug("Node came up in distributed enforcer #{state.enforcer_name}")
 
     # Trigger sync when a node comes back online
     if state.auto_sync do
@@ -390,7 +390,7 @@ defmodule CasbinEx2.DistributedEnforcer do
       EnforcerServer.add_policy(state.local_enforcer, policy)
     end)
 
-    Logger.info("Synchronized policies for distributed enforcer #{state.enforcer_name}")
+    Logger.debug("Synchronized policies for distributed enforcer #{state.enforcer_name}")
     :ok
   end
 end

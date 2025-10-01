@@ -112,7 +112,7 @@ defmodule CasbinEx2.LoggerTest do
 
   describe "log_enforcement/4" do
     test "logs enforcement decisions when enabled" do
-      CasbinLogger.enable_log(level: :info)
+      CasbinLogger.enable_log(level: :warn)
 
       :ok =
         CasbinLogger.log_enforcement(
@@ -130,7 +130,7 @@ defmodule CasbinEx2.LoggerTest do
 
       log_entry = hd(logs)
       assert log_entry.event_type == :enforcement
-      assert log_entry.level == :info
+      assert log_entry.level == :warn
       assert String.contains?(log_entry.message, "Enforcement")
       assert log_entry.metadata.request == ["alice", "data1", "read"]
       assert log_entry.metadata.result == true
@@ -154,9 +154,9 @@ defmodule CasbinEx2.LoggerTest do
     end
 
     test "respects log level filtering" do
-      CasbinLogger.enable_log(level: :warn)
+      CasbinLogger.enable_log(level: :error)
 
-      # This should not be logged (info < warn)
+      # This should not be logged (warn < error)
       :ok =
         CasbinLogger.log_enforcement(
           ["alice", "data1", "read"],
@@ -172,7 +172,7 @@ defmodule CasbinEx2.LoggerTest do
     end
 
     test "respects event type filtering" do
-      CasbinLogger.enable_log(level: :info)
+      CasbinLogger.enable_log(level: :warn)
       # Only log policy changes
       CasbinLogger.add_filter(:policy_change)
 
@@ -194,7 +194,7 @@ defmodule CasbinEx2.LoggerTest do
 
   describe "log_policy_change/4" do
     test "logs policy changes when enabled" do
-      CasbinLogger.enable_log(level: :info)
+      CasbinLogger.enable_log(level: :warn)
 
       :ok =
         CasbinLogger.log_policy_change(
@@ -212,7 +212,7 @@ defmodule CasbinEx2.LoggerTest do
 
       log_entry = hd(logs)
       assert log_entry.event_type == :policy_change
-      assert log_entry.level == :info
+      assert log_entry.level == :warn
       assert String.contains?(log_entry.message, "Policy add")
       assert log_entry.metadata.action == :add
       assert log_entry.metadata.ptype == "p"
@@ -222,7 +222,7 @@ defmodule CasbinEx2.LoggerTest do
 
   describe "log_role_operation/5" do
     test "logs role management operations" do
-      CasbinLogger.enable_log(level: :info)
+      CasbinLogger.enable_log(level: :warn)
 
       :ok =
         CasbinLogger.log_role_operation(
@@ -241,7 +241,7 @@ defmodule CasbinEx2.LoggerTest do
 
       log_entry = hd(logs)
       assert log_entry.event_type == :role_management
-      assert log_entry.level == :info
+      assert log_entry.level == :warn
       assert String.contains?(log_entry.message, "Role add_link")
       assert log_entry.metadata.operation == :add_link
       assert log_entry.metadata.user == "alice"
@@ -252,7 +252,7 @@ defmodule CasbinEx2.LoggerTest do
 
   describe "log_adapter_operation/4" do
     test "logs adapter operations" do
-      CasbinLogger.enable_log(level: :info)
+      CasbinLogger.enable_log(level: :warn)
 
       :ok =
         CasbinLogger.log_adapter_operation(
@@ -270,7 +270,7 @@ defmodule CasbinEx2.LoggerTest do
 
       log_entry = hd(logs)
       assert log_entry.event_type == :adapter
-      assert log_entry.level == :info
+      assert log_entry.level == :warn
       assert String.contains?(log_entry.message, "Adapter load_policy")
       assert log_entry.metadata.operation == :load_policy
       assert log_entry.metadata.status == :success
@@ -280,7 +280,7 @@ defmodule CasbinEx2.LoggerTest do
 
   describe "log_watcher_event/3" do
     test "logs watcher events" do
-      CasbinLogger.enable_log(level: :info)
+      CasbinLogger.enable_log(level: :warn)
 
       :ok =
         CasbinLogger.log_watcher_event(
@@ -297,7 +297,7 @@ defmodule CasbinEx2.LoggerTest do
 
       log_entry = hd(logs)
       assert log_entry.event_type == :watcher
-      assert log_entry.level == :info
+      assert log_entry.level == :warn
       assert String.contains?(log_entry.message, "Watcher policy_update")
       assert log_entry.metadata.event_type == :policy_update
     end
@@ -305,7 +305,7 @@ defmodule CasbinEx2.LoggerTest do
 
   describe "log_error/3" do
     test "logs error events" do
-      CasbinLogger.enable_log(level: :error)
+      CasbinLogger.enable_log(level: :warn)
 
       :ok =
         CasbinLogger.log_error(
@@ -355,7 +355,7 @@ defmodule CasbinEx2.LoggerTest do
 
     test "does not log performance when level is too high" do
       # debug < info
-      CasbinLogger.enable_log(level: :info)
+      CasbinLogger.enable_log(level: :warn)
 
       :ok =
         CasbinLogger.log_performance(
@@ -374,7 +374,7 @@ defmodule CasbinEx2.LoggerTest do
 
   describe "get_recent_logs/1" do
     test "returns recent log entries" do
-      CasbinLogger.enable_log(level: :info)
+      CasbinLogger.enable_log(level: :warn)
 
       # Add multiple log entries
       :ok = CasbinLogger.log_enforcement(["alice", "data1", "read"], true, "Match 1")
@@ -394,7 +394,7 @@ defmodule CasbinEx2.LoggerTest do
 
   describe "flush/0" do
     test "flushes the log buffer" do
-      CasbinLogger.enable_log(level: :info)
+      CasbinLogger.enable_log(level: :warn)
 
       :ok = CasbinLogger.log_enforcement(["alice", "data1", "read"], true, "Test")
 
@@ -414,7 +414,7 @@ defmodule CasbinEx2.LoggerTest do
 
   describe "clear_buffer/0" do
     test "clears the log buffer" do
-      CasbinLogger.enable_log(level: :info)
+      CasbinLogger.enable_log(level: :warn)
 
       :ok = CasbinLogger.log_enforcement(["alice", "data1", "read"], true, "Test")
 
@@ -433,7 +433,7 @@ defmodule CasbinEx2.LoggerTest do
 
   describe "buffer management" do
     test "maintains buffer size limit" do
-      CasbinLogger.enable_log(level: :info, buffer_size: 3)
+      CasbinLogger.enable_log(level: :warn, buffer_size: 3)
 
       # Add more entries than buffer size
       for i <- 1..5 do
@@ -462,16 +462,16 @@ defmodule CasbinEx2.LoggerTest do
       logs_after_debug = CasbinLogger.get_recent_logs(10)
       debug_count = length(logs_after_debug)
 
-      # info level
+      # warn level
       :ok = CasbinLogger.log_enforcement(["alice", "data1", "read"], true, "Test")
       # Give some time for async processing
       Process.sleep(10)
 
-      logs_after_info = CasbinLogger.get_recent_logs(10)
-      info_count = length(logs_after_info)
+      logs_after_warn = CasbinLogger.get_recent_logs(10)
+      warn_count = length(logs_after_warn)
 
-      # Info should not be logged (info < warn)
-      assert info_count == debug_count
+      # Warn should be logged (warn >= warn)
+      assert warn_count == debug_count + 1
 
       # This should be logged
       # error level
@@ -483,7 +483,7 @@ defmodule CasbinEx2.LoggerTest do
       error_count = length(logs_after_error)
 
       # Error should be logged (error >= warn)
-      assert error_count > info_count
+      assert error_count > warn_count
     end
   end
 
@@ -515,7 +515,7 @@ defmodule CasbinEx2.LoggerTest do
 
   describe "edge cases" do
     test "handles empty metadata gracefully" do
-      CasbinLogger.enable_log(level: :info)
+      CasbinLogger.enable_log(level: :warn)
 
       :ok = CasbinLogger.log_enforcement(["alice", "data1", "read"], true, "Test", %{})
 
@@ -530,7 +530,7 @@ defmodule CasbinEx2.LoggerTest do
     end
 
     test "handles nil metadata gracefully" do
-      CasbinLogger.enable_log(level: :info)
+      CasbinLogger.enable_log(level: :warn)
 
       # Test with explicit empty metadata
       :ok = CasbinLogger.log_policy_change(:add, "p", ["alice", "data1", "read"])

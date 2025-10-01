@@ -43,7 +43,7 @@ defmodule CasbinEx2.Logger do
 
   @default_config %{
     enabled: false,
-    level: :info,
+    level: :warn,
     output: :console,
     format: :standard,
     filters: [],
@@ -154,7 +154,7 @@ defmodule CasbinEx2.Logger do
   """
   @spec log_enforcement([String.t()], boolean(), String.t(), map()) :: :ok
   def log_enforcement(request, result, explanation, metadata \\ %{}) do
-    log_event(:enforcement, :info, "Enforcement: #{inspect(request)} -> #{result}", %{
+    log_event(:enforcement, :warn, "Enforcement: #{inspect(request)} -> #{result}", %{
       request: request,
       result: result,
       explanation: explanation,
@@ -172,7 +172,7 @@ defmodule CasbinEx2.Logger do
   """
   @spec log_policy_change(atom(), String.t(), [String.t()], map()) :: :ok
   def log_policy_change(action, ptype, params, metadata \\ %{}) do
-    log_event(:policy_change, :info, "Policy #{action}: #{ptype} #{inspect(params)}", %{
+    log_event(:policy_change, :warn, "Policy #{action}: #{ptype} #{inspect(params)}", %{
       action: action,
       ptype: ptype,
       params: params,
@@ -190,7 +190,7 @@ defmodule CasbinEx2.Logger do
   """
   @spec log_role_operation(atom(), String.t(), String.t(), String.t(), map()) :: :ok
   def log_role_operation(operation, user, role, domain, metadata \\ %{}) do
-    log_event(:role_management, :info, "Role #{operation}: #{user} -> #{role} (#{domain})", %{
+    log_event(:role_management, :warn, "Role #{operation}: #{user} -> #{role} (#{domain})", %{
       operation: operation,
       user: user,
       role: role,
@@ -209,7 +209,7 @@ defmodule CasbinEx2.Logger do
   """
   @spec log_adapter_operation(atom(), atom(), any(), map()) :: :ok
   def log_adapter_operation(operation, status, result, metadata \\ %{}) do
-    log_event(:adapter, :info, "Adapter #{operation}: #{status} - #{inspect(result)}", %{
+    log_event(:adapter, :warn, "Adapter #{operation}: #{status} - #{inspect(result)}", %{
       operation: operation,
       status: status,
       result: result,
@@ -227,7 +227,7 @@ defmodule CasbinEx2.Logger do
   """
   @spec log_watcher_event(atom(), String.t(), map()) :: :ok
   def log_watcher_event(event_type, message, metadata \\ %{}) do
-    log_event(:watcher, :info, "Watcher #{event_type}: #{message}", %{
+    log_event(:watcher, :warn, "Watcher #{event_type}: #{message}", %{
       event_type: event_type,
       message: message,
       metadata: metadata

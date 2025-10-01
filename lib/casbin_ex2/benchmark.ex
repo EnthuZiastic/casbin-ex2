@@ -38,7 +38,7 @@ defmodule CasbinEx2.Benchmark do
     iterations = Keyword.get(opts, :iterations, 1000)
     policy_count = Keyword.get(opts, :policy_count, 100)
 
-    Logger.info(
+    Logger.debug(
       "Benchmarking enforcement comparison with #{iterations} iterations and #{policy_count} policies"
     )
 
