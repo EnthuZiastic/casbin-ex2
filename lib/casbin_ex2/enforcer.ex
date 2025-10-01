@@ -1738,8 +1738,11 @@ defmodule CasbinEx2.Enforcer do
   defp init_function_map do
     %{
       "keyMatch" => &key_match/2,
+      "keyGet" => &key_get/2,
       "keyMatch2" => &key_match2/2,
+      "keyGet2" => &key_get2/3,
       "keyMatch3" => &key_match3/2,
+      "keyGet3" => &key_get3/3,
       "keyMatch4" => &key_match4/2,
       "keyMatch5" => &key_match5/2,
       "regexMatch" => &regex_match/2,
@@ -1748,7 +1751,8 @@ defmodule CasbinEx2.Enforcer do
       "ipMatch3" => &ip_match3/2,
       "globMatch" => &glob_match/2,
       "globMatch2" => &glob_match2/2,
-      "globMatch3" => &glob_match3/2
+      "globMatch3" => &glob_match3/2,
+      "timeMatch" => &time_match/2
     }
   end
 
@@ -2079,7 +2083,20 @@ defmodule CasbinEx2.Enforcer do
   defp substitute_parameter("p.start_time", _request, policy), do: Enum.at(policy, 3, "")
   # Time-based: [sub, obj, act, start_time, end_time]
   defp substitute_parameter("p.end_time", _request, policy), do: Enum.at(policy, 4, "")
-  defp substitute_parameter(literal, _request, _policy), do: literal
+  # Handle quoted string literals
+  defp substitute_parameter(literal, _request, _policy) do
+    # Remove surrounding quotes if present
+    case literal do
+      "'" <> rest ->
+        String.trim_trailing(rest, "'")
+
+      "\"" <> rest ->
+        String.trim_trailing(rest, "\"")
+
+      _ ->
+        literal
+    end
+  end
 
   # Helper to detect if a string looks like a timestamp (all digits)
   defp timestamp?(str) when is_binary(str) do
@@ -2392,6 +2409,96 @@ defmodule CasbinEx2.Enforcer do
     pattern
     |> String.replace(~r/\[([^\]]+)\]/, "(\\1)")
     |> String.replace("!", "^")
+  end
+
+  # KeyGet functions - Extract matched parts from patterns
+
+  defp key_get(key1, key2) do
+    # KeyGet returns the matched part
+    # For example, "/foo/bar/foo" matches "/foo/*", returns "bar/foo"
+    case String.split(key2, "*", parts: 2) do
+      [prefix, _suffix] ->
+        if String.starts_with?(key1, prefix) do
+          String.slice(key1, String.length(prefix)..-1//1)
+        else
+          ""
+        end
+
+      _ ->
+        ""
+    end
+  end
+
+  defp key_get2(key1, key2, path_var) do
+    # KeyGet2 returns value matched pattern
+    # For example, "/resource1" matches "/:resource"
+    # if the pathVar == "resource", then "resource1" will be returned
+    pattern =
+      key2
+      |> String.replace("/*", "/.*")
+      |> String.replace(~r/:([^\/]+)/, "(?<\\1>[^/]+)")
+
+    case Regex.compile("^#{pattern}$") do
+      {:ok, regex} ->
+        case Regex.named_captures(regex, key1) do
+          nil -> ""
+          captures -> Map.get(captures, path_var, "")
+        end
+
+      {:error, _} ->
+        ""
+    end
+  end
+
+  defp key_get3(key1, key2, path_var) do
+    # KeyGet3 returns value matched pattern
+    # For example, "project/proj_project1_admin/" matches "project/proj_{project}_admin/"
+    # if the pathVar == "project", then "project1" will be returned
+    pattern =
+      key2
+      |> String.replace("/*", "/.*")
+      |> String.replace(~r/\{([^}]+)\}/, "(?<\\1>[^/]+?)")
+
+    case Regex.compile("^#{pattern}$") do
+      {:ok, regex} ->
+        case Regex.named_captures(regex, key1) do
+          nil -> ""
+          captures -> Map.get(captures, path_var, "")
+        end
+
+      {:error, _} ->
+        ""
+    end
+  end
+
+  # Time matching function
+
+  defp time_match(start_time, end_time) do
+    # TimeMatch determines whether the current time is between startTime and endTime
+    # You can use "_" to indicate that the parameter is ignored
+    now = DateTime.utc_now()
+
+    start_check =
+      if start_time == "_" do
+        true
+      else
+        case DateTime.from_iso8601(start_time) do
+          {:ok, start_dt, _} -> DateTime.compare(now, start_dt) in [:gt, :eq]
+          {:error, _} -> false
+        end
+      end
+
+    end_check =
+      if end_time == "_" do
+        true
+      else
+        case DateTime.from_iso8601(end_time) do
+          {:ok, end_dt, _} -> DateTime.compare(now, end_dt) in [:lt, :eq]
+          {:error, _} -> false
+        end
+      end
+
+    start_check and end_check
   end
 
   # Extended RBAC API - Additional functions for permissions and roles
