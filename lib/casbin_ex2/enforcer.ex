@@ -1544,24 +1544,30 @@ defmodule CasbinEx2.Enforcer do
 
   defp evaluate_function_call(expr, request, policy, function_map) do
     # Parse function call like "ipMatch(r.sub, p.sub)"
+    case parse_function_call(expr) do
+      {:ok, func_name, args_str} ->
+        execute_function_call(func_name, args_str, request, policy, function_map)
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp parse_function_call(expr) do
     case Regex.run(~r/^(\w+)\((.+)\)$/, String.trim(expr)) do
-      [_, func_name, args_str] ->
-        case Map.get(function_map, func_name) do
-          nil ->
-            {:error, "Unknown function: #{func_name}"}
+      [_, func_name, args_str] -> {:ok, func_name, args_str}
+      nil -> {:error, "Invalid function call syntax: #{expr}"}
+    end
+  end
 
-          func ->
-            # Parse arguments and substitute values
-            args = String.split(args_str, ",") |> Enum.map(&String.trim/1)
-
-            case substitute_and_call_function(func, args, request, policy) do
-              {:ok, result} -> {:ok, result}
-              {:error, reason} -> {:error, reason}
-            end
-        end
-
+  defp execute_function_call(func_name, args_str, request, policy, function_map) do
+    case Map.get(function_map, func_name) do
       nil ->
-        {:error, "Invalid function call syntax: #{expr}"}
+        {:error, "Unknown function: #{func_name}"}
+
+      func ->
+        args = String.split(args_str, ",") |> Enum.map(&String.trim/1)
+        substitute_and_call_function(func, args, request, policy)
     end
   end
 
@@ -1605,30 +1611,35 @@ defmodule CasbinEx2.Enforcer do
     left_val = substitute_parameter(left, request, policy)
     right_val = substitute_parameter(right, request, policy)
 
-    # Try to convert to numbers for comparison
+    result = perform_comparison(left_val, right_val, operator)
+    {:ok, result}
+  end
+
+  defp perform_comparison(left_val, right_val, operator) do
     case {parse_number(left_val), parse_number(right_val)} do
       {{:ok, left_num}, {:ok, right_num}} ->
-        result =
-          case operator do
-            ">=" -> left_num >= right_num
-            "<=" -> left_num <= right_num
-            ">" -> left_num > right_num
-            "<" -> left_num < right_num
-          end
-
-        {:ok, result}
+        numeric_comparison(left_num, right_num, operator)
 
       _ ->
-        # Fall back to string comparison
-        result =
-          case operator do
-            ">=" -> left_val >= right_val
-            "<=" -> left_val <= right_val
-            ">" -> left_val > right_val
-            "<" -> left_val < right_val
-          end
+        string_comparison(left_val, right_val, operator)
+    end
+  end
 
-        {:ok, result}
+  defp numeric_comparison(left_num, right_num, operator) do
+    case operator do
+      ">=" -> left_num >= right_num
+      "<=" -> left_num <= right_num
+      ">" -> left_num > right_num
+      "<" -> left_num < right_num
+    end
+  end
+
+  defp string_comparison(left_val, right_val, operator) do
+    case operator do
+      ">=" -> left_val >= right_val
+      "<=" -> left_val <= right_val
+      ">" -> left_val > right_val
+      "<" -> left_val < right_val
     end
   end
 
@@ -1841,38 +1852,51 @@ defmodule CasbinEx2.Enforcer do
     # IP/CIDR matching following Go's net.ParseIP and net.ParseCIDR
     case :inet.parse_address(String.to_charlist(ip1)) do
       {:ok, ip1_addr} ->
-        if String.contains?(ip2, "/") do
-          # Parse CIDR notation
-          case String.split(ip2, "/") do
-            [network_str, prefix_str] ->
-              case {:inet.parse_address(String.to_charlist(network_str)),
-                    Integer.parse(prefix_str)} do
-                {{:ok, network_addr}, {prefix_len, ""}} ->
-                  ip_in_cidr_network(ip1_addr, network_addr, prefix_len)
-
-                _ ->
-                  false
-              end
-
-            _ ->
-              false
-          end
-        else
-          # Direct IP comparison
-          case :inet.parse_address(String.to_charlist(ip2)) do
-            {:ok, ip2_addr} ->
-              ip1_addr == ip2_addr
-
-            _ ->
-              # If ip2 is not a valid IP address (e.g., it's a role name like "alice"),
-              # we return true assuming role-based access has already been validated
-              # by the g() function in the matcher expression
-              true
-          end
-        end
+        handle_ip_match(ip1_addr, ip2)
 
       _ ->
         false
+    end
+  end
+
+  defp handle_ip_match(ip1_addr, ip2) do
+    if String.contains?(ip2, "/") do
+      handle_cidr_match(ip1_addr, ip2)
+    else
+      handle_direct_ip_match(ip1_addr, ip2)
+    end
+  end
+
+  defp handle_cidr_match(ip1_addr, ip2) do
+    case String.split(ip2, "/") do
+      [network_str, prefix_str] ->
+        parse_and_match_cidr(ip1_addr, network_str, prefix_str)
+
+      _ ->
+        false
+    end
+  end
+
+  defp parse_and_match_cidr(ip1_addr, network_str, prefix_str) do
+    case {:inet.parse_address(String.to_charlist(network_str)), Integer.parse(prefix_str)} do
+      {{:ok, network_addr}, {prefix_len, ""}} ->
+        ip_in_cidr_network(ip1_addr, network_addr, prefix_len)
+
+      _ ->
+        false
+    end
+  end
+
+  defp handle_direct_ip_match(ip1_addr, ip2) do
+    case :inet.parse_address(String.to_charlist(ip2)) do
+      {:ok, ip2_addr} ->
+        ip1_addr == ip2_addr
+
+      _ ->
+        # If ip2 is not a valid IP address (e.g., it's a role name like "alice"),
+        # we return true assuming role-based access has already been validated
+        # by the g() function in the matcher expression
+        true
     end
   end
 
