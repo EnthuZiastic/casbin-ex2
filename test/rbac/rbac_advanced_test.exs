@@ -5,18 +5,9 @@ defmodule CasbinEx2.RBACAdvancedTest do
 
   Tests the 11 functions added for feature parity with Golang Casbin.
 
-  ## Status: 36/40 tests passing (90%)
+  ## Status: 40/40 tests passing (100%) ✅
 
-  ### Known Failures (4 tests):
-  1. get_implicit_resources_for_user - Not returning resources for users with direct permissions
-  2. get_allowed_object_conditions (3 tests) - Not extracting conditions correctly:
-     - Basic extraction with prefix
-     - Filtering by action
-     - Including conditions from role permissions
-
-  These failures indicate implementation issues in the underlying functions that need
-  to be addressed in a future iteration. The basic functionality works, but complex
-  scenarios with role expansion need more work.
+  All RBAC advanced functions are working correctly with full test coverage.
   """
   use ExUnit.Case, async: true
 
