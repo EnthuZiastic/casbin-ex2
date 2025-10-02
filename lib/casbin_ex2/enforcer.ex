@@ -1840,14 +1840,55 @@ defmodule CasbinEx2.Enforcer do
 
   # Simple expression parser and evaluator
   defp parse_and_evaluate_expression(expr, request, policy, function_map) do
-    # Handle basic expressions with && operator
-    if String.contains?(expr, "&&") do
-      parts = String.split(expr, "&&") |> Enum.map(&String.trim/1)
-      evaluate_and_expression(parts, request, policy, function_map)
-    else
-      # Single expression
-      evaluate_single_expression(expr, request, policy, function_map)
+    # Handle expressions with || and && operators (|| has lower precedence)
+    # Split by || first, then each part may contain &&
+    cond do
+      String.contains?(expr, "||") ->
+        parts = split_by_operator(expr, "||")
+        evaluate_or_expression(parts, request, policy, function_map)
+
+      String.contains?(expr, "&&") ->
+        parts = split_by_operator(expr, "&&")
+        evaluate_and_expression(parts, request, policy, function_map)
+
+      true ->
+        # Single expression
+        evaluate_single_expression(expr, request, policy, function_map)
     end
+  end
+
+  # Split expression by operator, respecting parentheses
+  defp split_by_operator(expr, operator) do
+    # Simple split - for complex expressions with parentheses,
+    # this would need to track nesting level
+    expr
+    |> String.split(operator)
+    |> Enum.map(&String.trim/1)
+  end
+
+  defp evaluate_or_expression(parts, request, policy, function_map) do
+    results =
+      Enum.map(parts, fn part ->
+        # Each part might be an AND expression or parenthesized expression
+        part_trimmed = String.trim(part)
+
+        part_expr =
+          if String.starts_with?(part_trimmed, "(") and String.ends_with?(part_trimmed, ")") do
+            # Remove outer parentheses
+            String.slice(part_trimmed, 1..-2//1) |> String.trim()
+          else
+            part_trimmed
+          end
+
+        case parse_and_evaluate_expression(part_expr, request, policy, function_map) do
+          {:ok, result} -> result
+          {:error, _reason} -> false
+        end
+      end)
+
+    # Any part true makes OR expression true
+    any_true = Enum.any?(results, fn result -> result == true end)
+    {:ok, any_true}
   end
 
   defp evaluate_and_expression(parts, request, policy, function_map) do
@@ -2104,6 +2145,14 @@ defmodule CasbinEx2.Enforcer do
           Enum.at(request, 2, "")
         end
 
+      # BIBA/BLP: [sub, sub_level, obj, obj_level, act]
+      5 ->
+        Enum.at(request, 2, "")
+
+      # LBAC: [sub, conf, integ, obj, conf, integ, act]
+      7 ->
+        Enum.at(request, 3, "")
+
       # Default to standard
       _ ->
         Enum.at(request, 1, "")
@@ -2126,6 +2175,14 @@ defmodule CasbinEx2.Enforcer do
           # Domain-based: [sub, dom, obj, act]
           Enum.at(request, 3, "")
         end
+
+      # BIBA/BLP: [sub, sub_level, obj, obj_level, act]
+      5 ->
+        Enum.at(request, 4, "")
+
+      # LBAC: [sub, conf, integ, obj, conf, integ, act]
+      7 ->
+        Enum.at(request, 6, "")
 
       # Default to standard
       _ ->
@@ -2175,6 +2232,21 @@ defmodule CasbinEx2.Enforcer do
   defp substitute_parameter("p.start_time", _request, policy), do: Enum.at(policy, 3, "")
   # Time-based: [sub, obj, act, start_time, end_time]
   defp substitute_parameter("p.end_time", _request, policy), do: Enum.at(policy, 4, "")
+
+  # BIBA/BLP: [sub, sub_level, obj, obj_level, act]
+  defp substitute_parameter("r.sub_level", request, _policy), do: Enum.at(request, 1, "")
+  defp substitute_parameter("r.obj_level", request, _policy), do: Enum.at(request, 3, "")
+
+  # LBAC: [sub, conf, integ, obj, conf, integ, act]
+  defp substitute_parameter("r.subject_confidentiality", request, _policy),
+    do: Enum.at(request, 1, "")
+
+  defp substitute_parameter("r.subject_integrity", request, _policy), do: Enum.at(request, 2, "")
+
+  defp substitute_parameter("r.object_confidentiality", request, _policy),
+    do: Enum.at(request, 4, "")
+
+  defp substitute_parameter("r.object_integrity", request, _policy), do: Enum.at(request, 5, "")
 
   # Handle generic request parameters like r.ip, r.role, etc.
   defp substitute_parameter("r." <> _field, request, _policy) do
