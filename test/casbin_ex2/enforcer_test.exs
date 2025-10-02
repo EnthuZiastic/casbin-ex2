@@ -544,21 +544,21 @@ defmodule CasbinEx2.EnforcerTest do
       assert ["alice", "data3", "read"] in policies
     end
 
-    test "delete_permissions_for_user removes specific permissions" do
+    test "delete_permissions_for_user removes all permissions for user" do
       enforcer = create_test_enforcer()
       {:ok, enforcer} = add_test_policy(enforcer, ["alice", "data1", "read"])
       {:ok, enforcer} = add_test_policy(enforcer, ["alice", "data2", "write"])
       {:ok, enforcer} = add_test_policy(enforcer, ["alice", "data3", "read"])
+      {:ok, enforcer} = add_test_policy(enforcer, ["bob", "data1", "read"])
 
-      permissions_to_remove = [["data1", "read"], ["data3", "read"]]
-
-      assert {:ok, enforcer} =
-               Enforcer.delete_permissions_for_user(enforcer, "alice", permissions_to_remove)
+      assert {:ok, enforcer} = Enforcer.delete_permissions_for_user(enforcer, "alice")
 
       policies = Enforcer.get_policy(enforcer)
       assert ["alice", "data1", "read"] not in policies
       assert ["alice", "data3", "read"] not in policies
-      assert ["alice", "data2", "write"] in policies
+      assert ["alice", "data2", "write"] not in policies
+      # Bob's permissions should remain
+      assert ["bob", "data1", "read"] in policies
     end
 
     test "get_implicit_permissions_for_user returns direct and role-based permissions" do

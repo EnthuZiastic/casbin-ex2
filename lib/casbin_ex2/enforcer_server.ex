@@ -931,8 +931,8 @@ defmodule CasbinEx2.EnforcerServer do
     {:reply, result, enforcer}
   end
 
-  def handle_call({:delete_permissions_for_user, user, permissions}, _from, enforcer) do
-    case Enforcer.delete_permissions_for_user(enforcer, user, permissions) do
+  def handle_call({:delete_permissions_for_user, user, _permissions}, _from, enforcer) do
+    case Enforcer.delete_permissions_for_user(enforcer, user) do
       {:ok, new_enforcer} ->
         update_ets(new_enforcer)
         {:reply, true, new_enforcer}

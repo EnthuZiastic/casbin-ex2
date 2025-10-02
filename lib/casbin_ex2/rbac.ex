@@ -1275,18 +1275,8 @@ defmodule CasbinEx2.RBAC do
     sub in subjects and (act == action or act == "*")
   end
 
-  defp matches_action_for_subjects?([sub, _obj, act, dom], subjects, action, domain) do
-    sub in subjects and dom == domain and (act == action or act == "*")
-  end
-
-  defp matches_action_for_subjects?([sub, dom, _obj, act], subjects, action, domain) do
-    sub in subjects and dom == domain and (act == action or act == "*")
-  end
-
   defp matches_action_for_subjects?(_policy, _subjects, _action, _domain), do: false
 
   defp extract_object_from_policy([_sub, obj, _act]), do: obj
-  defp extract_object_from_policy([_sub, obj, _act, _dom]), do: obj
-  defp extract_object_from_policy([_sub, _dom, obj, _act]), do: obj
   defp extract_object_from_policy(_policy), do: nil
 end
