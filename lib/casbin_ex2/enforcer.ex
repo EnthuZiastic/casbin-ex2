@@ -468,6 +468,103 @@ defmodule CasbinEx2.Enforcer do
   defp extract_domain_value(domain), do: hd(domain)
 
   @doc """
+  Incrementally builds role links for the specified rules without clearing existing links.
+
+  This is more efficient than `build_role_links/1` when only a few rules change,
+  as it doesn't rebuild all role links from scratch.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `op` - The operation: `:add` to add links, `:remove` to remove links
+  - `ptype` - Policy type (e.g., "g", "g2")
+  - `rules` - List of rules to add or remove, each rule is a list like ["alice", "admin", "domain1"]
+
+  ## Examples
+
+      {:ok, enforcer} = build_incremental_role_links(enforcer, :add, "g", [["alice", "admin"]])
+      {:ok, enforcer} = build_incremental_role_links(enforcer, :remove, "g", [["bob", "editor"]])
+  """
+  @spec build_incremental_role_links(t(), :add | :remove, String.t(), [[String.t()]]) ::
+          {:ok, t()} | {:error, term()}
+  def build_incremental_role_links(
+        %__MODULE__{role_manager: nil} = _enforcer,
+        _op,
+        _ptype,
+        _rules
+      ) do
+    {:error, "role manager is not initialized"}
+  end
+
+  def build_incremental_role_links(
+        %__MODULE__{role_manager: role_manager} = enforcer,
+        op,
+        _ptype,
+        rules
+      )
+      when op in [:add, :remove] do
+    Enum.each(rules, fn rule ->
+      case op do
+        :add -> add_role_link_if_valid(role_manager, rule)
+        :remove -> remove_role_link_if_valid(role_manager, rule)
+      end
+    end)
+
+    {:ok, enforcer}
+  rescue
+    e -> {:error, Exception.message(e)}
+  end
+
+  def build_incremental_role_links(_enforcer, op, _ptype, _rules) do
+    {:error, "invalid operation: #{inspect(op)}, must be :add or :remove"}
+  end
+
+  @doc """
+  Incrementally builds conditional role links for the specified rules.
+
+  This function is similar to `build_incremental_role_links/4` but works with
+  conditional role managers that support additional conditions on role relationships.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `op` - The operation: `:add` to add links, `:remove` to remove links
+  - `ptype` - Policy type (e.g., "g", "g2")
+  - `rules` - List of rules to add or remove
+
+  ## Examples
+
+      {:ok, enforcer} = build_incremental_conditional_role_links(
+        enforcer,
+        :add,
+        "g",
+        [["alice", "admin", "domain1"]]
+      )
+  """
+  @spec build_incremental_conditional_role_links(t(), :add | :remove, String.t(), [[String.t()]]) ::
+          {:ok, t()} | {:error, term()}
+  def build_incremental_conditional_role_links(enforcer, op, ptype, rules) do
+    # For now, conditional role links work the same as regular role links
+    # This can be enhanced when conditional role manager support is added
+    build_incremental_role_links(enforcer, op, ptype, rules)
+  end
+
+  defp remove_role_link_if_valid(role_manager, policy) do
+    case policy do
+      policy when is_list(policy) and length(policy) >= 2 ->
+        remove_role_link_from_policy(role_manager, policy)
+
+      _ ->
+        # Skip invalid policies
+        :ok
+    end
+  end
+
+  defp remove_role_link_from_policy(role_manager, policy) do
+    [user, role | domain] = policy
+    domain_value = extract_domain_value(domain)
+    RoleManager.delete_link(role_manager, user, role, domain_value)
+  end
+
+  @doc """
   Enables or disables the enforcer.
   """
   @spec enable_enforce(t(), boolean()) :: t()

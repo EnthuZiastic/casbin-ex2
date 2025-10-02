@@ -502,6 +502,77 @@ CasbinEx2.Enforcer.load_model(enforcer, model_path)
 
 **Use Case:** Dynamic model updates when the model configuration file has been updated.
 
+### `set_watcher/2` ✨ **ENHANCED**
+
+Sets a watcher for distributed policy synchronization.
+
+```elixir
+CasbinEx2.Enforcer.set_watcher(enforcer, watcher)
+```
+
+**Parameters:**
+- `enforcer` - The enforcer struct
+- `watcher` - Watcher implementation for policy sync (e.g., RedisWatcher, EtcdWatcher)
+
+**Returns:** `{:ok, enforcer}` or `{:error, reason}`
+
+**Use Case:** Distributed systems requiring policy synchronization across multiple nodes.
+
+### `build_incremental_role_links/4` ✨ **NEW**
+
+Incrementally builds role links without clearing existing links.
+
+```elixir
+CasbinEx2.Enforcer.build_incremental_role_links(enforcer, op, ptype, rules)
+```
+
+**Parameters:**
+- `enforcer` - The enforcer struct
+- `op` - Operation: `:add` to add links, `:remove` to remove links
+- `ptype` - Policy type (e.g., "g", "g2")
+- `rules` - List of rules, each rule is a list like `["alice", "admin", "domain1"]`
+
+**Returns:** `{:ok, enforcer}` or `{:error, reason}`
+
+**Use Case:** Performance optimization when only a few role assignments change, avoiding full role link rebuild.
+
+**Example:**
+```elixir
+# Add new role links incrementally
+{:ok, enforcer} = build_incremental_role_links(
+  enforcer,
+  :add,
+  "g",
+  [["alice", "admin"], ["bob", "editor"]]
+)
+
+# Remove specific role links
+{:ok, enforcer} = build_incremental_role_links(
+  enforcer,
+  :remove,
+  "g",
+  [["bob", "editor"]]
+)
+```
+
+### `build_incremental_conditional_role_links/4` ✨ **NEW**
+
+Incrementally builds conditional role links for advanced role management scenarios.
+
+```elixir
+CasbinEx2.Enforcer.build_incremental_conditional_role_links(enforcer, op, ptype, rules)
+```
+
+**Parameters:**
+- `enforcer` - The enforcer struct
+- `op` - Operation: `:add` to add links, `:remove` to remove links
+- `ptype` - Policy type (e.g., "g", "g2")
+- `rules` - List of rules with conditional parameters
+
+**Returns:** `{:ok, enforcer}` or `{:error, reason}`
+
+**Use Case:** Advanced scenarios requiring conditional role relationships (time-based roles, context-aware permissions).
+
 ## Management APIs
 
 ### `get_all_subjects/1`
