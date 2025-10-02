@@ -694,17 +694,17 @@ defmodule CasbinEx2.Enforcer do
   defdelegate remove_named_policies(enforcer, ptype, rules), to: Management
 
   def remove_filtered_policy(enforcer, field_index, field_values) do
-    case Management.remove_filtered_policy(enforcer, field_index, field_values) do
-      {:ok, updated_enforcer, _count} -> {:ok, updated_enforcer}
-      error -> error
-    end
+    {:ok, updated_enforcer, _count} =
+      Management.remove_filtered_policy(enforcer, field_index, field_values)
+
+    {:ok, updated_enforcer}
   end
 
   def remove_filtered_named_policy(enforcer, ptype, field_index, field_values) do
-    case Management.remove_filtered_named_policy(enforcer, ptype, field_index, field_values) do
-      {:ok, updated_enforcer, _count} -> {:ok, updated_enforcer}
-      error -> error
-    end
+    {:ok, updated_enforcer, _count} =
+      Management.remove_filtered_named_policy(enforcer, ptype, field_index, field_values)
+
+    {:ok, updated_enforcer}
   end
 
   defdelegate update_policy(enforcer, old_rule, new_rule), to: Management
@@ -1310,12 +1310,8 @@ defmodule CasbinEx2.Enforcer do
     # For now, implement a simple parser for expressions like:
     # "ipMatch(r.sub, p.sub) && r.obj == p.obj && r.act == p.act"
 
-    case parse_and_evaluate_expression(matcher_expr, request, policy, function_map) do
-      {:ok, result} when is_boolean(result) -> {:ok, result}
-      # Non-boolean results are treated as false
-      {:ok, _result} -> {:ok, false}
-      {:error, reason} -> {:error, reason}
-    end
+    {:ok, result} = parse_and_evaluate_expression(matcher_expr, request, policy, function_map)
+    {:ok, result}
   rescue
     e -> {:error, "Expression evaluation error: #{inspect(e)}"}
   end
@@ -2762,7 +2758,7 @@ defmodule CasbinEx2.Enforcer do
           String.t(),
           integer(),
           [String.t()]
-        ) :: {:ok, t()} | {:error, term()}
+        ) :: {:ok, t(), [[String.t()]]} | {:error, term()}
   def remove_filtered_policy_without_notify(enforcer, sec, ptype, field_index, field_values) do
     if Enum.empty?(field_values) do
       {:error, "field_values cannot be empty"}
@@ -2829,6 +2825,8 @@ defmodule CasbinEx2.Enforcer do
            remove_filtered_policy_without_notify(enforcer, sec, ptype, field_index, field_values),
          {:ok, final_enforcer} <- add_policies_for_sec(updated_enforcer, sec, ptype, new_rules) do
       {:ok, final_enforcer, old_rules}
+    else
+      {:error, _} = error -> error
     end
   end
 
@@ -2848,10 +2846,6 @@ defmodule CasbinEx2.Enforcer do
 
   defp add_policies_for_sec(enforcer, "g", ptype, rules) do
     Management.add_named_grouping_policies(enforcer, ptype, rules)
-  end
-
-  defp add_policies_for_sec(_enforcer, _sec, _ptype, _rules) do
-    {:error, "invalid section type, must be 'p' or 'g'"}
   end
 
   # Helper function to ensure a role manager is wrapped in a ConditionalRoleManager

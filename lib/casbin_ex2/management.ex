@@ -406,18 +406,15 @@ defmodule CasbinEx2.Management do
         field_index,
         field_values
       ) do
-    case remove_filtered_named_grouping_policy_internal(
-           enforcer,
-           ptype,
-           field_index,
-           field_values
-         ) do
-      {:ok, updated_enforcer, removed_rules} ->
-        {:ok, updated_enforcer, length(removed_rules)}
+    {:ok, updated_enforcer, removed_rules} =
+      remove_filtered_named_grouping_policy_internal(
+        enforcer,
+        ptype,
+        field_index,
+        field_values
+      )
 
-      error ->
-        error
-    end
+    {:ok, updated_enforcer, length(removed_rules)}
   end
 
   @doc false
@@ -771,13 +768,10 @@ defmodule CasbinEx2.Management do
   Returns {:ok, enforcer, count} with the number of rules removed.
   """
   def remove_filtered_policy(%Enforcer{} = enforcer, field_index, field_values) do
-    case remove_filtered_named_policy_internal(enforcer, "p", field_index, field_values) do
-      {:ok, updated_enforcer, removed_rules} ->
-        {:ok, updated_enforcer, length(removed_rules)}
+    {:ok, updated_enforcer, removed_rules} =
+      remove_filtered_named_policy_internal(enforcer, "p", field_index, field_values)
 
-      error ->
-        error
-    end
+    {:ok, updated_enforcer, length(removed_rules)}
   end
 
   @doc """
@@ -790,13 +784,10 @@ defmodule CasbinEx2.Management do
         field_index,
         field_values
       ) do
-    case remove_filtered_named_policy_internal(enforcer, ptype, field_index, field_values) do
-      {:ok, updated_enforcer, removed_rules} ->
-        {:ok, updated_enforcer, length(removed_rules)}
+    {:ok, updated_enforcer, removed_rules} =
+      remove_filtered_named_policy_internal(enforcer, ptype, field_index, field_values)
 
-      error ->
-        error
-    end
+    {:ok, updated_enforcer, length(removed_rules)}
   end
 
   @doc false

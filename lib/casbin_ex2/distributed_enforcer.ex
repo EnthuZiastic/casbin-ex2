@@ -337,12 +337,15 @@ defmodule CasbinEx2.DistributedEnforcer do
     other_nodes = List.delete(state.nodes, Node.self())
 
     Enum.each(other_nodes, fn node ->
-      case Registry.lookup({@registry, node}, {:distributed_enforcer, state.enforcer_name}) do
-        [{pid, _}] ->
+      case :rpc.call(node, Registry, :lookup, [@registry, {:distributed_enforcer, state.enforcer_name}]) do
+        [{pid, _}] when is_pid(pid) ->
           GenServer.cast(pid, message)
 
         [] ->
           Logger.warning("Distributed enforcer #{state.enforcer_name} not found on node #{node}")
+
+        {:badrpc, reason} ->
+          Logger.warning("Failed to lookup distributed enforcer on node #{node}: #{inspect(reason)}")
       end
     end)
   end
