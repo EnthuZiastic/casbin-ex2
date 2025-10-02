@@ -26,6 +26,7 @@ defmodule CasbinEx2.MixProject do
       {:postgrex, "~> 0.17"},
       {:jason, "~> 1.4"},
       {:redix, "~> 1.2"},
+      {:castore, "~> 1.0"},
       {:poolboy, "~> 1.5"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.30", only: :dev, runtime: false},
