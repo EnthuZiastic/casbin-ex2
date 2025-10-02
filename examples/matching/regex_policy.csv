@@ -1,0 +1,4 @@
+p, alice|bob, /data[0-9]+, read|write
+p, admin_.*, /admin/.*, .*
+p, user_[a-z]+, /user/[a-z]+/.*, read
+p, .*@company\.com, /shared/.*, read

@@ -1,0 +1,3 @@
+p, alice, read
+p, bob, write
+p, charlie, admin
