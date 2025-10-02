@@ -31,7 +31,12 @@ defmodule CasbinEx2.MixProject do
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.30", only: :dev, runtime: false},
       {:dialyxir, "~> 1.3", only: [:dev], runtime: false},
-      {:mix_unused, "~> 0.4", only: [:dev, :test], runtime: false}
+      {:git_hooks, "~> 0.8.0", only: [:dev], runtime: false},
+      {:mix_unused,
+       git: "https://github.com/EnthuZiastic/mix_unused.git",
+       branch: "master",
+       only: [:dev],
+       runtime: false}
     ]
   end
 end
