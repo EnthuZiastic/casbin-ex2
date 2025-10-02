@@ -30,7 +30,8 @@ defmodule CasbinEx2.MixProject do
       {:poolboy, "~> 1.5"},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.30", only: :dev, runtime: false},
-      {:dialyxir, "~> 1.3", only: [:dev], runtime: false}
+      {:dialyxir, "~> 1.3", only: [:dev], runtime: false},
+      {:mix_unused, "~> 0.4", only: [:dev, :test], runtime: false}
     ]
   end
 end

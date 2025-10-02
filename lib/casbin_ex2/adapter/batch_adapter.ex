@@ -9,7 +9,6 @@ defmodule CasbinEx2.Adapter.BatchAdapter do
   @behaviour CasbinEx2.Adapter
 
   alias CasbinEx2.Adapter
-  alias CasbinEx2.Model
 
   defstruct [
     :base_adapter,
@@ -411,35 +410,19 @@ defmodule CasbinEx2.Adapter.BatchAdapter do
   end
 
   defp fallback_remove_filtered_policies(base_adapter, ptype, field_index, field_values) do
-    # This is a simplified fallback - in a real implementation,
-    # you would load the current policies, filter them, and save the result
-    with {:ok, policies, grouping_policies} <- Adapter.load_policy(base_adapter, %Model{}),
-         current_policies <- Map.get(policies, ptype, []),
-         filtered_policies <- filter_policies(current_policies, field_index, field_values),
-         updated_policies <- Map.put(policies, ptype, filtered_policies),
-         :ok <- Adapter.save_policy(base_adapter, updated_policies, grouping_policies) do
-      {:ok, base_adapter}
-    end
-  end
+    # Fallback: use singular remove_filtered_policy if available
+    sec = if String.starts_with?(ptype, "g"), do: "g", else: "p"
 
-  defp filter_policies(policies, field_index, field_values) do
-    Enum.reject(policies, fn policy ->
-      policy_matches_filter?(policy, field_index, field_values)
-    end)
-  end
-
-  defp policy_matches_filter?(policy, field_index, field_values) do
-    field_values
-    |> Enum.with_index()
-    |> Enum.all?(fn {value, offset} ->
-      field_matches_value?(policy, field_index + offset, value)
-    end)
-  end
-
-  defp field_matches_value?(policy, field_index, value) do
-    case Enum.at(policy, field_index) do
-      ^value -> true
-      _ -> false
+    case base_adapter.__struct__.remove_filtered_policy(
+           base_adapter,
+           sec,
+           ptype,
+           field_index,
+           field_values
+         ) do
+      :ok -> {:ok, base_adapter}
+      {:ok, _} = result -> result
+      {:error, _} = error -> error
     end
   end
 

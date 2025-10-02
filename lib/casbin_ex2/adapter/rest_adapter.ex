@@ -291,7 +291,6 @@ defmodule CasbinEx2.Adapter.RestAdapter do
       case method do
         :get -> adapter.http_client.get(url, headers, options)
         :post -> adapter.http_client.post(url, body, headers, options)
-        :put -> adapter.http_client.put(url, body, headers, options)
         :delete -> adapter.http_client.delete(url, headers, options)
       end
     end)

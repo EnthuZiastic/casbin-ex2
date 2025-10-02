@@ -398,9 +398,31 @@ defmodule CasbinEx2.Management do
 
   @doc """
   Removes filtered named role inheritance rules from the current policy.
-  Returns {:ok, enforcer} with count of removed rules.
+  Returns {:ok, enforcer, count} with the number of rules removed.
   """
   def remove_filtered_named_grouping_policy(
+        %Enforcer{} = enforcer,
+        ptype,
+        field_index,
+        field_values
+      ) do
+    case remove_filtered_named_grouping_policy_internal(
+           enforcer,
+           ptype,
+           field_index,
+           field_values
+         ) do
+      {:ok, updated_enforcer, removed_rules} ->
+        {:ok, updated_enforcer, length(removed_rules)}
+
+      error ->
+        error
+    end
+  end
+
+  @doc false
+  # Internal version that returns the actual removed rules (used by enforcer.ex)
+  def remove_filtered_named_grouping_policy_internal(
         %Enforcer{grouping_policies: grouping_policies} = enforcer,
         ptype,
         field_index,
@@ -430,7 +452,7 @@ defmodule CasbinEx2.Management do
         updated_enforcer
       end
 
-    {:ok, updated_enforcer, length(removed_policies)}
+    {:ok, updated_enforcer, removed_policies}
   end
 
   @doc """
@@ -746,17 +768,40 @@ defmodule CasbinEx2.Management do
 
   @doc """
   Removes authorization rules that match the filter from the current policy.
-  Returns the number of rules removed.
+  Returns {:ok, enforcer, count} with the number of rules removed.
   """
   def remove_filtered_policy(%Enforcer{} = enforcer, field_index, field_values) do
-    remove_filtered_named_policy(enforcer, "p", field_index, field_values)
+    case remove_filtered_named_policy_internal(enforcer, "p", field_index, field_values) do
+      {:ok, updated_enforcer, removed_rules} ->
+        {:ok, updated_enforcer, length(removed_rules)}
+
+      error ->
+        error
+    end
   end
 
   @doc """
   Removes authorization rules that match the filter from the current named policy.
-  Returns the number of rules removed.
+  Returns {:ok, enforcer, count} with the number of rules removed.
   """
   def remove_filtered_named_policy(
+        %Enforcer{} = enforcer,
+        ptype,
+        field_index,
+        field_values
+      ) do
+    case remove_filtered_named_policy_internal(enforcer, ptype, field_index, field_values) do
+      {:ok, updated_enforcer, removed_rules} ->
+        {:ok, updated_enforcer, length(removed_rules)}
+
+      error ->
+        error
+    end
+  end
+
+  @doc false
+  # Internal version that returns the actual removed rules (used by enforcer.ex)
+  def remove_filtered_named_policy_internal(
         %Enforcer{policies: policies} = enforcer,
         ptype,
         field_index,
@@ -764,7 +809,7 @@ defmodule CasbinEx2.Management do
       ) do
     policy_list = Map.get(policies, ptype, [])
 
-    {_matching_rules, remaining_rules} =
+    {matching_rules, remaining_rules} =
       Enum.split_with(policy_list, fn rule ->
         field_values
         |> Enum.with_index()
@@ -777,7 +822,7 @@ defmodule CasbinEx2.Management do
 
     updated_policies = Map.put(policies, ptype, remaining_rules)
     updated_enforcer = %{enforcer | policies: updated_policies}
-    {:ok, updated_enforcer}
+    {:ok, updated_enforcer, matching_rules}
   end
 
   @doc """

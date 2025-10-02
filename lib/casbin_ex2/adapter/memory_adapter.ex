@@ -476,8 +476,6 @@ defmodule CasbinEx2.Adapter.MemoryAdapter do
           case type do
             :policy -> "p"
             :grouping_policy -> "g"
-            # default fallback
-            _ -> "p"
           end
 
         {{type, {sec, ptype}}, rules}

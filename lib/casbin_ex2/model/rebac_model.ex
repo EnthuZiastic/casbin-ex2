@@ -218,9 +218,6 @@ defmodule CasbinEx2.Model.RebacModel do
       {:error, :complex_expression} ->
         # For complex expressions, you could integrate with an expression evaluator
         evaluate_complex_expression(model, subject, action, object, policy)
-
-      {:error, _reason} ->
-        false
     end
   end
 

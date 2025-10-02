@@ -5,48 +5,51 @@ defmodule CasbinEx2.Adapter do
 
   alias CasbinEx2.Model
 
-  @type t :: module()
+  @type t :: struct()
 
   @doc """
   Loads all policies from the storage.
   """
-  @callback load_policy(t(), Model.t()) :: {:ok, map(), map()} | {:error, term()}
+  @callback load_policy(struct(), Model.t()) :: {:ok, map(), map()} | {:error, term()}
 
   @doc """
   Loads filtered policies from the storage.
   """
-  @callback load_filtered_policy(t(), Model.t(), any()) :: {:ok, map(), map()} | {:error, term()}
+  @callback load_filtered_policy(struct(), Model.t(), any()) ::
+              {:ok, map(), map()} | {:error, term()}
 
   @doc """
   Loads incremental filtered policies from the storage.
   """
-  @callback load_incremental_filtered_policy(t(), Model.t(), any()) ::
+  @callback load_incremental_filtered_policy(struct(), Model.t(), any()) ::
               {:ok, map(), map()} | {:error, term()}
 
   @doc """
   Checks if the adapter supports filtered loading.
   """
-  @callback filtered?(t()) :: boolean()
+  @callback filtered?(struct()) :: boolean()
 
   @doc """
   Saves all policies to the storage.
   """
-  @callback save_policy(t(), map(), map()) :: :ok | {:error, term()}
+  @callback save_policy(struct(), map(), map()) :: :ok | {:error, term()}
 
   @doc """
   Adds a policy rule to the storage.
   """
-  @callback add_policy(t(), String.t(), String.t(), [String.t()]) :: :ok | {:error, term()}
+  @callback add_policy(struct(), String.t(), String.t(), [String.t()]) ::
+              :ok | {:error, term()}
 
   @doc """
   Removes a policy rule from the storage.
   """
-  @callback remove_policy(t(), String.t(), String.t(), [String.t()]) :: :ok | {:error, term()}
+  @callback remove_policy(struct(), String.t(), String.t(), [String.t()]) ::
+              :ok | {:error, term()}
 
   @doc """
   Removes filtered policy rules from the storage.
   """
-  @callback remove_filtered_policy(t(), String.t(), String.t(), integer(), [String.t()]) ::
+  @callback remove_filtered_policy(struct(), String.t(), String.t(), integer(), [String.t()]) ::
               :ok | {:error, term()}
 
   @doc """

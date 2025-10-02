@@ -692,10 +692,20 @@ defmodule CasbinEx2.Enforcer do
   defdelegate remove_named_policy(enforcer, ptype, params), to: Management
   defdelegate remove_policies(enforcer, rules), to: Management
   defdelegate remove_named_policies(enforcer, ptype, rules), to: Management
-  defdelegate remove_filtered_policy(enforcer, field_index, field_values), to: Management
 
-  defdelegate remove_filtered_named_policy(enforcer, ptype, field_index, field_values),
-    to: Management
+  def remove_filtered_policy(enforcer, field_index, field_values) do
+    case Management.remove_filtered_policy(enforcer, field_index, field_values) do
+      {:ok, updated_enforcer, _count} -> {:ok, updated_enforcer}
+      error -> error
+    end
+  end
+
+  def remove_filtered_named_policy(enforcer, ptype, field_index, field_values) do
+    case Management.remove_filtered_named_policy(enforcer, ptype, field_index, field_values) do
+      {:ok, updated_enforcer, _count} -> {:ok, updated_enforcer}
+      error -> error
+    end
+  end
 
   defdelegate update_policy(enforcer, old_rule, new_rule), to: Management
   defdelegate update_named_policy(enforcer, ptype, old_rule, new_rule), to: Management
@@ -2242,16 +2252,12 @@ defmodule CasbinEx2.Enforcer do
     direct_permissions = get_permissions_for_user_direct(policies, user, domain)
 
     # Get permissions through roles
-    role_permissions =
-      case CasbinEx2.RoleManager.get_roles(role_manager, user, domain) do
-        roles when is_list(roles) ->
-          Enum.flat_map(roles, fn role ->
-            get_permissions_for_user_direct(policies, role, domain)
-          end)
+    roles = CasbinEx2.RoleManager.get_roles(role_manager, user, domain)
 
-        _ ->
-          []
-      end
+    role_permissions =
+      Enum.flat_map(roles, fn role ->
+        get_permissions_for_user_direct(policies, role, domain)
+      end)
 
     (direct_permissions ++ role_permissions) |> Enum.uniq()
   end
@@ -2265,10 +2271,7 @@ defmodule CasbinEx2.Enforcer do
         user,
         domain \\ ""
       ) do
-    case CasbinEx2.RoleManager.get_roles(role_manager, user, domain) do
-      roles when is_list(roles) -> roles
-      _ -> []
-    end
+    CasbinEx2.RoleManager.get_roles(role_manager, user, domain)
   end
 
   @doc """
@@ -2766,10 +2769,15 @@ defmodule CasbinEx2.Enforcer do
     else
       case sec do
         "p" ->
-          Management.remove_filtered_named_policy(enforcer, ptype, field_index, field_values)
+          CasbinEx2.Management.remove_filtered_named_policy_internal(
+            enforcer,
+            ptype,
+            field_index,
+            field_values
+          )
 
         "g" ->
-          Management.remove_filtered_named_grouping_policy(
+          CasbinEx2.Management.remove_filtered_named_grouping_policy_internal(
             enforcer,
             ptype,
             field_index,

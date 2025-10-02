@@ -625,16 +625,8 @@ defmodule CasbinEx2.RBAC do
 
   # Helper functions for get_implicit_roles_for_user
   defp get_roles_recursively(role_manager, user, domain) do
-    case CasbinEx2.RoleManager.get_roles(role_manager, user, domain) do
-      {:ok, direct_roles} ->
-        build_implicit_roles_set(role_manager, direct_roles, domain)
-
-      {:error, _} ->
-        []
-
-      direct_roles when is_list(direct_roles) ->
-        build_implicit_roles_set(role_manager, direct_roles, domain)
-    end
+    direct_roles = CasbinEx2.RoleManager.get_roles(role_manager, user, domain)
+    build_implicit_roles_set(role_manager, direct_roles, domain)
   end
 
   defp build_implicit_roles_set(role_manager, direct_roles, domain) do
@@ -647,17 +639,8 @@ defmodule CasbinEx2.RBAC do
 
   defp get_role_hierarchy(role_manager, role, domain, acc) do
     updated_acc = MapSet.put(acc, role)
-
-    case CasbinEx2.RoleManager.get_roles(role_manager, role, domain) do
-      {:ok, indirect_roles} ->
-        MapSet.union(updated_acc, MapSet.new(indirect_roles))
-
-      {:error, _} ->
-        updated_acc
-
-      indirect_roles when is_list(indirect_roles) ->
-        MapSet.union(updated_acc, MapSet.new(indirect_roles))
-    end
+    indirect_roles = CasbinEx2.RoleManager.get_roles(role_manager, role, domain)
+    MapSet.union(updated_acc, MapSet.new(indirect_roles))
   end
 
   # Helper functions for domain-specific functions
@@ -1246,13 +1229,7 @@ defmodule CasbinEx2.RBAC do
         action
       ) do
     # Get all implicit roles for the user in the domain
-    roles_result = get_implicit_roles_for_user(enforcer, user, domain)
-
-    roles =
-      case roles_result do
-        {:ok, role_list} -> role_list
-        {:error, _} -> []
-      end
+    roles = get_implicit_roles_for_user(enforcer, user, domain)
 
     # Create list of subjects (user + all their roles)
     subjects = [user | roles]
