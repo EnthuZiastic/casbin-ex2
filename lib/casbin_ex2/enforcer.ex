@@ -836,6 +836,110 @@ defmodule CasbinEx2.Enforcer do
     Map.get(named_rms, ptype)
   end
 
+  @doc """
+  Adds a custom matching function to the role manager for the specified policy type.
+
+  Matching functions allow custom logic for determining if roles match.
+  For example, you could implement pattern matching, regex matching, or hierarchical matching.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `ptype` - Policy type (e.g., "g", "g2")
+  - `name` - Name for the matching function
+  - `func` - Custom matching function with signature `(arg1, arg2) -> boolean`
+
+  ## Returns
+  - `{:ok, enforcer}` if the role manager exists for the given ptype
+  - `{:error, :role_manager_not_found}` if no role manager exists for the ptype
+
+  ## Examples
+
+      custom_match = fn name1, name2 ->
+        String.contains?(name1, name2) || String.contains?(name2, name1)
+      end
+
+      {:ok, enforcer} = add_named_matching_func(enforcer, "g", "fuzzyMatch", custom_match)
+  """
+  @spec add_named_matching_func(t(), String.t(), String.t(), function()) ::
+          {:ok, t()} | {:error, atom()}
+  def add_named_matching_func(
+        %__MODULE__{role_manager: role_manager, named_role_managers: named_rms} = enforcer,
+        ptype,
+        name,
+        func
+      )
+      when is_function(func, 2) do
+    cond do
+      ptype == "g" && role_manager != nil ->
+        updated_rm = RoleManager.add_matching_func(role_manager, name, func)
+        {:ok, %{enforcer | role_manager: updated_rm}}
+
+      Map.has_key?(named_rms, ptype) ->
+        rm = Map.get(named_rms, ptype)
+        updated_rm = RoleManager.add_matching_func(rm, name, func)
+        updated_named_rms = Map.put(named_rms, ptype, updated_rm)
+        {:ok, %{enforcer | named_role_managers: updated_named_rms}}
+
+      true ->
+        {:error, :role_manager_not_found}
+    end
+  end
+
+  @doc """
+  Adds a custom domain matching function to the role manager for the specified policy type.
+
+  Domain matching functions allow custom logic for determining if roles match within specific domains.
+  Useful for multi-tenant systems with complex domain hierarchies.
+
+  ## Parameters
+  - `enforcer` - The enforcer struct
+  - `ptype` - Policy type (e.g., "g", "g2")
+  - `name` - Name for the domain matching function
+  - `func` - Custom matching function with signature `(arg1, arg2) -> boolean`
+
+  ## Returns
+  - `{:ok, enforcer}` if the role manager exists for the given ptype
+  - `{:error, :role_manager_not_found}` if no role manager exists for the ptype
+
+  ## Examples
+
+      domain_hierarchy_match = fn domain1, domain2 ->
+        # Match if domains are in same hierarchy
+        String.starts_with?(domain1, domain2) || String.starts_with?(domain2, domain1)
+      end
+
+      {:ok, enforcer} = add_named_domain_matching_func(
+        enforcer,
+        "g",
+        "hierarchyMatch",
+        domain_hierarchy_match
+      )
+  """
+  @spec add_named_domain_matching_func(t(), String.t(), String.t(), function()) ::
+          {:ok, t()} | {:error, atom()}
+  def add_named_domain_matching_func(
+        %__MODULE__{role_manager: role_manager, named_role_managers: named_rms} = enforcer,
+        ptype,
+        name,
+        func
+      )
+      when is_function(func, 2) do
+    cond do
+      ptype == "g" && role_manager != nil ->
+        updated_rm = RoleManager.add_domain_matching_func(role_manager, name, func)
+        {:ok, %{enforcer | role_manager: updated_rm}}
+
+      Map.has_key?(named_rms, ptype) ->
+        rm = Map.get(named_rms, ptype)
+        updated_rm = RoleManager.add_domain_matching_func(rm, name, func)
+        updated_named_rms = Map.put(named_rms, ptype, updated_rm)
+        {:ok, %{enforcer | named_role_managers: updated_named_rms}}
+
+      true ->
+        {:error, :role_manager_not_found}
+    end
+  end
+
   # Transaction Support
 
   @doc """
@@ -2576,72 +2680,6 @@ defmodule CasbinEx2.Enforcer do
   # Role Manager Configuration Functions
 
   @doc """
-  Adds a custom matching function to a named role manager.
-
-  ## Parameters
-  - `enforcer` - The enforcer struct
-  - `ptype` - Policy type (e.g., "g", "g2")
-  - `name` - Name of the matching function
-  - `fn` - The matching function
-
-  ## Returns
-  Boolean indicating success
-
-  ## Examples
-
-      enforcer = add_named_matching_func(enforcer, "g", "custom_match", fn name1, name2 ->
-        String.downcase(name1) == String.downcase(name2)
-      end)
-  """
-  @spec add_named_matching_func(t(), String.t(), String.t(), function()) :: t()
-  def add_named_matching_func(enforcer, ptype, name, func) do
-    case Map.get(enforcer.named_role_managers, ptype) do
-      nil ->
-        # Role manager not found for this ptype
-        enforcer
-
-      role_manager ->
-        # Add matching function to the role manager
-        # Note: This requires RoleManager to support add_matching_func/3
-        updated_rm = RoleManager.add_matching_func(role_manager, name, func)
-        named_rms = Map.put(enforcer.named_role_managers, ptype, updated_rm)
-        %{enforcer | named_role_managers: named_rms}
-    end
-  end
-
-  @doc """
-  Adds a domain-specific matching function to a named role manager.
-
-  ## Parameters
-  - `enforcer` - The enforcer struct
-  - `ptype` - Policy type (e.g., "g", "g2")
-  - `name` - Name of the matching function
-  - `fn` - The domain matching function
-
-  ## Returns
-  Updated enforcer
-
-  ## Examples
-
-      enforcer = add_named_domain_matching_func(enforcer, "g", "domain_match", fn name1, name2, domain ->
-        String.downcase(name1) == String.downcase(name2) && domain == "admin"
-      end)
-  """
-  @spec add_named_domain_matching_func(t(), String.t(), String.t(), function()) :: t()
-  def add_named_domain_matching_func(enforcer, ptype, name, func) do
-    case Map.get(enforcer.named_role_managers, ptype) do
-      nil ->
-        enforcer
-
-      role_manager ->
-        # Add domain matching function to the role manager
-        updated_rm = RoleManager.add_domain_matching_func(role_manager, name, func)
-        named_rms = Map.put(enforcer.named_role_managers, ptype, updated_rm)
-        %{enforcer | named_role_managers: named_rms}
-    end
-  end
-
-  @doc """
   Adds a conditional link function for a specific user-role relationship.
   The link is only valid when the condition function returns true.
 
@@ -2662,21 +2700,33 @@ defmodule CasbinEx2.Enforcer do
       end)
   """
   @spec add_named_link_condition_func(t(), String.t(), String.t(), String.t(), function()) :: t()
-  def add_named_link_condition_func(enforcer, ptype, user, role, func) do
-    case Map.get(enforcer.named_role_managers, ptype) do
-      nil ->
-        enforcer
-
-      role_manager ->
+  def add_named_link_condition_func(
+        %__MODULE__{role_manager: role_manager, named_role_managers: named_rms} = enforcer,
+        ptype,
+        user,
+        role,
+        func
+      ) do
+    cond do
+      ptype == "g" && role_manager != nil ->
         cond_rm = ensure_conditional_role_manager(role_manager)
 
         updated_cond_rm =
           CasbinEx2.ConditionalRoleManager.add_link_condition_func(cond_rm, user, role, func)
 
-        %{
-          enforcer
-          | named_role_managers: Map.put(enforcer.named_role_managers, ptype, updated_cond_rm)
-        }
+        %{enforcer | role_manager: updated_cond_rm}
+
+      Map.has_key?(named_rms, ptype) ->
+        rm = Map.get(named_rms, ptype)
+        cond_rm = ensure_conditional_role_manager(rm)
+
+        updated_cond_rm =
+          CasbinEx2.ConditionalRoleManager.add_link_condition_func(cond_rm, user, role, func)
+
+        %{enforcer | named_role_managers: Map.put(named_rms, ptype, updated_cond_rm)}
+
+      true ->
+        enforcer
     end
   end
 
@@ -2709,12 +2759,16 @@ defmodule CasbinEx2.Enforcer do
           String.t(),
           function()
         ) :: t()
-  def add_named_domain_link_condition_func(enforcer, ptype, user, role, domain, func) do
-    case Map.get(enforcer.named_role_managers, ptype) do
-      nil ->
-        enforcer
-
-      role_manager ->
+  def add_named_domain_link_condition_func(
+        %__MODULE__{role_manager: role_manager, named_role_managers: named_rms} = enforcer,
+        ptype,
+        user,
+        role,
+        domain,
+        func
+      ) do
+    cond do
+      ptype == "g" && role_manager != nil ->
         cond_rm = ensure_conditional_role_manager(role_manager)
 
         updated_cond_rm =
@@ -2726,10 +2780,25 @@ defmodule CasbinEx2.Enforcer do
             func
           )
 
-        %{
-          enforcer
-          | named_role_managers: Map.put(enforcer.named_role_managers, ptype, updated_cond_rm)
-        }
+        %{enforcer | role_manager: updated_cond_rm}
+
+      Map.has_key?(named_rms, ptype) ->
+        rm = Map.get(named_rms, ptype)
+        cond_rm = ensure_conditional_role_manager(rm)
+
+        updated_cond_rm =
+          CasbinEx2.ConditionalRoleManager.add_domain_link_condition_func(
+            cond_rm,
+            user,
+            role,
+            domain,
+            func
+          )
+
+        %{enforcer | named_role_managers: Map.put(named_rms, ptype, updated_cond_rm)}
+
+      true ->
+        enforcer
     end
   end
 
@@ -2757,12 +2826,15 @@ defmodule CasbinEx2.Enforcer do
           String.t(),
           [String.t()]
         ) :: t()
-  def set_named_link_condition_func_params(enforcer, ptype, user, role, params) do
-    case Map.get(enforcer.named_role_managers, ptype) do
-      nil ->
-        enforcer
-
-      role_manager ->
+  def set_named_link_condition_func_params(
+        %__MODULE__{role_manager: role_manager, named_role_managers: named_rms} = enforcer,
+        ptype,
+        user,
+        role,
+        params
+      ) do
+    cond do
+      ptype == "g" && role_manager != nil ->
         cond_rm = ensure_conditional_role_manager(role_manager)
 
         updated_cond_rm =
@@ -2773,10 +2845,24 @@ defmodule CasbinEx2.Enforcer do
             params
           )
 
-        %{
-          enforcer
-          | named_role_managers: Map.put(enforcer.named_role_managers, ptype, updated_cond_rm)
-        }
+        %{enforcer | role_manager: updated_cond_rm}
+
+      Map.has_key?(named_rms, ptype) ->
+        rm = Map.get(named_rms, ptype)
+        cond_rm = ensure_conditional_role_manager(rm)
+
+        updated_cond_rm =
+          CasbinEx2.ConditionalRoleManager.set_link_condition_func_params(
+            cond_rm,
+            user,
+            role,
+            params
+          )
+
+        %{enforcer | named_role_managers: Map.put(named_rms, ptype, updated_cond_rm)}
+
+      true ->
+        enforcer
     end
   end
 
@@ -2806,12 +2892,16 @@ defmodule CasbinEx2.Enforcer do
           String.t(),
           [String.t()]
         ) :: t()
-  def set_named_domain_link_condition_func_params(enforcer, ptype, user, role, domain, params) do
-    case Map.get(enforcer.named_role_managers, ptype) do
-      nil ->
-        enforcer
-
-      role_manager ->
+  def set_named_domain_link_condition_func_params(
+        %__MODULE__{role_manager: role_manager, named_role_managers: named_rms} = enforcer,
+        ptype,
+        user,
+        role,
+        domain,
+        params
+      ) do
+    cond do
+      ptype == "g" && role_manager != nil ->
         cond_rm = ensure_conditional_role_manager(role_manager)
 
         updated_cond_rm =
@@ -2823,10 +2913,25 @@ defmodule CasbinEx2.Enforcer do
             params
           )
 
-        %{
-          enforcer
-          | named_role_managers: Map.put(enforcer.named_role_managers, ptype, updated_cond_rm)
-        }
+        %{enforcer | role_manager: updated_cond_rm}
+
+      Map.has_key?(named_rms, ptype) ->
+        rm = Map.get(named_rms, ptype)
+        cond_rm = ensure_conditional_role_manager(rm)
+
+        updated_cond_rm =
+          CasbinEx2.ConditionalRoleManager.set_domain_link_condition_func_params(
+            cond_rm,
+            user,
+            role,
+            domain,
+            params
+          )
+
+        %{enforcer | named_role_managers: Map.put(named_rms, ptype, updated_cond_rm)}
+
+      true ->
+        enforcer
     end
   end
 

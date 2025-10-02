@@ -573,6 +573,205 @@ CasbinEx2.Enforcer.build_incremental_conditional_role_links(enforcer, op, ptype,
 
 **Use Case:** Advanced scenarios requiring conditional role relationships (time-based roles, context-aware permissions).
 
+### `add_named_matching_func/4` ✨ **NEW**
+
+Adds a custom matching function to the role manager for pattern-based role matching.
+
+```elixir
+CasbinEx2.Enforcer.add_named_matching_func(enforcer, ptype, name, func)
+```
+
+**Parameters:**
+- `enforcer` - The enforcer struct
+- `ptype` - Policy type (e.g., "g", "g2")
+- `name` - Name for the matching function
+- `func` - Custom matching function with signature `(arg1, arg2) -> boolean`
+
+**Returns:** `{:ok, enforcer}` or `{:error, :role_manager_not_found}`
+
+**Use Case:** Implement regex matching, fuzzy matching, or hierarchical role matching for complex authorization scenarios.
+
+**Example:**
+```elixir
+# Case-insensitive role matching
+custom_match = fn name1, name2 ->
+  String.downcase(name1) == String.downcase(name2)
+end
+
+{:ok, enforcer} = add_named_matching_func(enforcer, "g", "caseInsensitiveMatch", custom_match)
+
+# Pattern matching with wildcards
+pattern_match = fn name1, name2 ->
+  String.contains?(name1, name2) || String.contains?(name2, name1)
+end
+
+{:ok, enforcer} = add_named_matching_func(enforcer, "g", "patternMatch", pattern_match)
+```
+
+### `add_named_domain_matching_func/4` ✨ **NEW**
+
+Adds a custom domain matching function for multi-tenant systems with complex domain hierarchies.
+
+```elixir
+CasbinEx2.Enforcer.add_named_domain_matching_func(enforcer, ptype, name, func)
+```
+
+**Parameters:**
+- `enforcer` - The enforcer struct
+- `ptype` - Policy type (e.g., "g", "g2")
+- `name` - Name for the domain matching function
+- `func` - Custom matching function with signature `(domain1, domain2) -> boolean`
+
+**Returns:** `{:ok, enforcer}` or `{:error, :role_manager_not_found}`
+
+**Use Case:** Hierarchical domain matching in multi-tenant systems (e.g., "org1.dept1" matches "org1.*").
+
+**Example:**
+```elixir
+# Hierarchical domain matching
+hierarchy_match = fn domain1, domain2 ->
+  String.starts_with?(domain1, domain2) || String.starts_with?(domain2, domain1)
+end
+
+{:ok, enforcer} = add_named_domain_matching_func(
+  enforcer,
+  "g",
+  "hierarchyMatch",
+  hierarchy_match
+)
+```
+
+### `add_named_link_condition_func/5` ✨ **ENHANCED**
+
+Adds a conditional function for user-role links. The link is only valid when the condition returns true.
+
+```elixir
+CasbinEx2.Enforcer.add_named_link_condition_func(enforcer, ptype, user, role, func)
+```
+
+**Parameters:**
+- `enforcer` - The enforcer struct
+- `ptype` - Policy type (e.g., "g")
+- `user` - User name
+- `role` - Role name
+- `func` - Condition function that validates the link: `(params) -> boolean`
+
+**Returns:** Updated enforcer
+
+**Use Case:** Time-based access control, location-based permissions, context-aware role assignments.
+
+**Example:**
+```elixir
+# Time-based access control (office hours only)
+time_condition = fn params ->
+  time = Map.get(params, "time", "00:00")
+  time >= "09:00" && time <= "17:00"
+end
+
+enforcer = add_named_link_condition_func(enforcer, "g", "alice", "admin", time_condition)
+```
+
+### `add_named_domain_link_condition_func/6` ✨ **ENHANCED**
+
+Adds a conditional function for user-role-domain links with domain-specific conditions.
+
+```elixir
+CasbinEx2.Enforcer.add_named_domain_link_condition_func(enforcer, ptype, user, role, domain, func)
+```
+
+**Parameters:**
+- `enforcer` - The enforcer struct
+- `ptype` - Policy type (e.g., "g")
+- `user` - User name
+- `role` - Role name
+- `domain` - Domain name
+- `func` - Condition function: `(params) -> boolean`
+
+**Returns:** Updated enforcer
+
+**Use Case:** Department-specific access, region-based permissions, multi-tenant conditional access.
+
+**Example:**
+```elixir
+# Department-based access control
+dept_condition = fn params ->
+  Map.get(params, "department") == "IT" && Map.get(params, "level", "0") |> String.to_integer() >= 3
+end
+
+enforcer = add_named_domain_link_condition_func(
+  enforcer,
+  "g",
+  "alice",
+  "admin",
+  "domain1",
+  dept_condition
+)
+```
+
+### `set_named_link_condition_func_params/4` ✨ **ENHANCED**
+
+Sets runtime parameters for a conditional link function.
+
+```elixir
+CasbinEx2.Enforcer.set_named_link_condition_func_params(enforcer, ptype, user, role, params)
+```
+
+**Parameters:**
+- `enforcer` - The enforcer struct
+- `ptype` - Policy type
+- `user` - User name
+- `role` - Role name
+- `params` - List of parameter values (e.g., `["time=14:30", "location=office"]`)
+
+**Returns:** Updated enforcer
+
+**Use Case:** Dynamic parameter updates without modifying condition functions.
+
+**Example:**
+```elixir
+# Update time parameter for time-based access
+enforcer = set_named_link_condition_func_params(
+  enforcer,
+  "g",
+  "alice",
+  "admin",
+  ["time=14:30", "location=office"]
+)
+```
+
+### `set_named_domain_link_condition_func_params/5` ✨ **ENHANCED**
+
+Sets runtime parameters for a conditional domain link function.
+
+```elixir
+CasbinEx2.Enforcer.set_named_domain_link_condition_func_params(enforcer, ptype, user, role, domain, params)
+```
+
+**Parameters:**
+- `enforcer` - The enforcer struct
+- `ptype` - Policy type
+- `user` - User name
+- `role` - Role name
+- `domain` - Domain name
+- `params` - List of parameter values
+
+**Returns:** Updated enforcer
+
+**Use Case:** Dynamic context updates for domain-specific conditions.
+
+**Example:**
+```elixir
+# Update department and security level
+enforcer = set_named_domain_link_condition_func_params(
+  enforcer,
+  "g",
+  "alice",
+  "admin",
+  "domain1",
+  ["department=IT", "level=5", "clearance=secret"]
+)
+```
+
 ## Management APIs
 
 ### `get_all_subjects/1`
