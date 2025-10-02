@@ -173,6 +173,132 @@ defmodule CasbinEx2.Enforcer do
   end
 
   @doc """
+  Loads a filtered policy from the adapter.
+
+  This is useful for large-scale deployments where loading all policies would be inefficient.
+  Only policies matching the filter criteria will be loaded.
+
+  ## Parameters
+
+  - `enforcer` - The enforcer struct
+  - `filter` - A filter specification (adapter-specific)
+
+  ## Examples
+
+      iex> filter = %{subject: "alice", domain: "domain1"}
+      iex> {:ok, enforcer} = CasbinEx2.Enforcer.load_filtered_policy(enforcer, filter)
+
+  """
+  @spec load_filtered_policy(t(), any()) :: {:ok, t()} | {:error, term()}
+  def load_filtered_policy(%__MODULE__{adapter: adapter, model: model} = enforcer, filter) do
+    # Clear existing policies before loading filtered
+    cleared_enforcer = clear_policy(enforcer)
+
+    case Adapter.load_filtered_policy(adapter, model, filter) do
+      {:ok, policies, grouping_policies} ->
+        updated_enforcer = %{
+          cleared_enforcer
+          | policies: policies,
+            grouping_policies: grouping_policies
+        }
+
+        if enforcer.auto_build_role_links do
+          build_role_links(updated_enforcer)
+        else
+          {:ok, updated_enforcer}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Loads an incremental filtered policy from the adapter.
+
+  Unlike `load_filtered_policy/2`, this does not clear existing policies.
+  New policies matching the filter are appended to existing policies.
+
+  ## Parameters
+
+  - `enforcer` - The enforcer struct
+  - `filter` - A filter specification (adapter-specific)
+
+  ## Examples
+
+      iex> filter = %{domain: "domain2"}
+      iex> {:ok, enforcer} = CasbinEx2.Enforcer.load_incremental_filtered_policy(enforcer, filter)
+
+  """
+  @spec load_incremental_filtered_policy(t(), any()) :: {:ok, t()} | {:error, term()}
+  def load_incremental_filtered_policy(
+        %__MODULE__{adapter: adapter, model: model} = enforcer,
+        filter
+      ) do
+    case Adapter.load_incremental_filtered_policy(adapter, model, filter) do
+      {:ok, new_policies, new_grouping_policies} ->
+        # Merge new policies with existing ones
+        merged_policies = merge_policies(enforcer.policies, new_policies)
+        merged_grouping = merge_policies(enforcer.grouping_policies, new_grouping_policies)
+
+        updated_enforcer = %{
+          enforcer
+          | policies: merged_policies,
+            grouping_policies: merged_grouping
+        }
+
+        if enforcer.auto_build_role_links do
+          build_role_links(updated_enforcer)
+        else
+          {:ok, updated_enforcer}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  @doc """
+  Checks if the loaded policy has been filtered.
+
+  Returns `true` if policies were loaded using filtered loading,
+  `false` if all policies were loaded or if adapter doesn't support filtering.
+
+  ## Examples
+
+      iex> CasbinEx2.Enforcer.is_filtered?(enforcer)
+      true
+
+  """
+  @spec is_filtered?(t()) :: boolean()
+  # credo:disable-for-next-line Credo.Check.Readability.PredicateFunctionNames
+  def is_filtered?(%__MODULE__{adapter: adapter}) do
+    Adapter.filtered?(adapter)
+  end
+
+  @doc """
+  Clears all policies and grouping policies from the enforcer.
+
+  This does not affect the persisted storage, only the in-memory policy state.
+
+  ## Examples
+
+      iex> enforcer = CasbinEx2.Enforcer.clear_policy(enforcer)
+
+  """
+  @spec clear_policy(t()) :: t()
+  def clear_policy(enforcer) do
+    %{enforcer | policies: %{}, grouping_policies: %{}}
+  end
+
+  # Helper function to merge two policy maps
+  defp merge_policies(existing, new_policies) do
+    Map.merge(existing, new_policies, fn _key, v1, v2 ->
+      (v1 ++ v2) |> Enum.uniq()
+    end)
+  end
+
+  @doc """
   The main enforcement function. Returns true if the request is allowed.
   """
   @spec enforce(t(), list()) :: boolean()
@@ -500,6 +626,40 @@ defmodule CasbinEx2.Enforcer do
   @spec get_model(t()) :: Model.t() | nil
   def get_model(%__MODULE__{model: model}) do
     model
+  end
+
+  @doc """
+  Reloads the model from a file path.
+
+  This is useful when the model configuration file has been updated
+  and you want to reload it into an existing enforcer.
+
+  ## Parameters
+
+  - `enforcer` - The enforcer struct
+  - `model_path` - Path to the model configuration file
+
+  ## Examples
+
+      {:ok, enforcer} = load_model(enforcer, "path/to/model.conf")
+
+  """
+  @spec load_model(t(), String.t()) :: {:ok, t()} | {:error, term()}
+  def load_model(%__MODULE__{} = enforcer, model_path) when is_binary(model_path) do
+    case Model.load_model(model_path) do
+      {:ok, new_model} ->
+        updated_enforcer = %{enforcer | model: new_model}
+
+        # Rebuild role links if auto_build is enabled
+        if enforcer.auto_build_role_links do
+          build_role_links(updated_enforcer)
+        else
+          {:ok, updated_enforcer}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   @doc """

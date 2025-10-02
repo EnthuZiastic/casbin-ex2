@@ -177,10 +177,11 @@ defmodule CasbinEx2.ManagementAPITest do
       {:ok, enforcer} = Management.add_grouping_policy(enforcer, ["charlie", "admin"])
 
       # Remove all policies where user is "bob"
+      # Note: CSV already has "bob, editor", so this removes 3 total (editor + admin + moderator)
       {:ok, updated_enforcer, count} =
         Management.remove_filtered_grouping_policy(enforcer, 0, ["bob"])
 
-      assert count == 2
+      assert count == 3
       refute Management.has_grouping_policy(updated_enforcer, ["bob", "admin"])
       refute Management.has_grouping_policy(updated_enforcer, ["bob", "moderator"])
       assert Management.has_grouping_policy(updated_enforcer, ["charlie", "admin"])
@@ -209,10 +210,11 @@ defmodule CasbinEx2.ManagementAPITest do
           ["charlie", "admin"]
         ])
 
+      # Note: CSV already has "bob, editor", so this removes 3 total
       {:ok, updated_enforcer, count} =
         Management.remove_filtered_named_grouping_policy(enforcer, "g", 0, ["bob"])
 
-      assert count == 2
+      assert count == 3
       refute Management.has_named_grouping_policy(updated_enforcer, "g", ["bob", "admin"])
 
       refute Management.has_named_grouping_policy(updated_enforcer, "g", [
@@ -358,7 +360,7 @@ defmodule CasbinEx2.ManagementAPITest do
 
   describe "add_policies_ex/3" do
     test "adds all valid policies and skips duplicates", %{enforcer: enforcer} do
-      # alice, data1, read and bob, data2, write already exist in CSV
+      # alice, data1, read AND bob, data2, write AND charlie, data3, read already exist in CSV
       policies = [
         ["alice", "data1", "read"],
         ["bob", "data2", "write"],
@@ -367,7 +369,8 @@ defmodule CasbinEx2.ManagementAPITest do
 
       {:ok, updated_enforcer, count} = Management.add_policies_ex(enforcer, policies)
 
-      assert count == 1
+      # All policies already exist, so count should be 0
+      assert count == 0
       assert Management.has_policy(updated_enforcer, ["charlie", "data3", "read"])
     end
 
@@ -387,6 +390,7 @@ defmodule CasbinEx2.ManagementAPITest do
 
   describe "add_named_policies_ex/4" do
     test "adds valid named policies and skips duplicates", %{enforcer: enforcer} do
+      # alice and charlie already exist in CSV
       policies = [
         ["alice", "data1", "read"],
         ["charlie", "data3", "read"],
@@ -395,7 +399,8 @@ defmodule CasbinEx2.ManagementAPITest do
 
       {:ok, updated_enforcer, count} = Management.add_named_policies_ex(enforcer, "p", policies)
 
-      assert count == 2
+      # Only dave is new, so count should be 1
+      assert count == 1
       assert Management.has_named_policy(updated_enforcer, "p", ["charlie", "data3", "read"])
       assert Management.has_named_policy(updated_enforcer, "p", ["dave", "data4", "write"])
     end
@@ -440,10 +445,11 @@ defmodule CasbinEx2.ManagementAPITest do
 
   describe "self_add_policy/4" do
     test "adds policy without watcher notification for p section", %{enforcer: enforcer} do
+      # Use dave instead of charlie (charlie already exists in CSV)
       {:ok, updated_enforcer} =
-        Management.self_add_policy(enforcer, "p", "p", ["charlie", "data3", "read"])
+        Management.self_add_policy(enforcer, "p", "p", ["dave", "data4", "write"])
 
-      assert Management.has_named_policy(updated_enforcer, "p", ["charlie", "data3", "read"])
+      assert Management.has_named_policy(updated_enforcer, "p", ["dave", "data4", "write"])
     end
 
     test "adds grouping policy without watcher notification for g section", %{
@@ -463,6 +469,7 @@ defmodule CasbinEx2.ManagementAPITest do
 
   describe "self_add_policies_ex/4" do
     test "adds multiple policies without watcher notification", %{enforcer: enforcer} do
+      # charlie already exists in CSV
       policies = [
         ["charlie", "data3", "read"],
         ["dave", "data4", "write"]
@@ -471,7 +478,8 @@ defmodule CasbinEx2.ManagementAPITest do
       {:ok, updated_enforcer, count} =
         Management.self_add_policies_ex(enforcer, "p", "p", policies)
 
-      assert count == 2
+      # Only dave is new, so count should be 1
+      assert count == 1
       assert Management.has_named_policy(updated_enforcer, "p", ["charlie", "data3", "read"])
       assert Management.has_named_policy(updated_enforcer, "p", ["dave", "data4", "write"])
     end
@@ -557,24 +565,25 @@ defmodule CasbinEx2.ManagementAPITest do
 
   describe "update_filtered_named_policies/5" do
     test "updates named policies matching filter", %{enforcer: enforcer} do
+      # Use dave instead of charlie (charlie already exists in CSV)
       {:ok, enforcer} =
         Management.add_named_policies(enforcer, "p", [
-          ["charlie", "data3", "read"],
-          ["charlie", "data3", "write"]
+          ["dave", "data4", "read"],
+          ["dave", "data4", "write"]
         ])
 
-      new_policies = [["charlie", "data3", "admin"]]
+      new_policies = [["dave", "data4", "admin"]]
 
       {:ok, updated_enforcer, old_rules} =
         Management.update_filtered_named_policies(enforcer, "p", new_policies, 0, [
-          "charlie",
-          "data3"
+          "dave",
+          "data4"
         ])
 
       assert length(old_rules) == 2
-      refute Management.has_named_policy(updated_enforcer, "p", ["charlie", "data3", "read"])
-      refute Management.has_named_policy(updated_enforcer, "p", ["charlie", "data3", "write"])
-      assert Management.has_named_policy(updated_enforcer, "p", ["charlie", "data3", "admin"])
+      refute Management.has_named_policy(updated_enforcer, "p", ["dave", "data4", "read"])
+      refute Management.has_named_policy(updated_enforcer, "p", ["dave", "data4", "write"])
+      assert Management.has_named_policy(updated_enforcer, "p", ["dave", "data4", "admin"])
     end
 
     test "supports wildcard filtering with empty strings", %{enforcer: enforcer} do
@@ -612,7 +621,8 @@ defmodule CasbinEx2.ManagementAPITest do
     end
 
     test "filters policies with complex matcher", %{enforcer: enforcer} do
-      {:ok, enforcer} = Management.add_policy(enforcer, ["charlie", "data3", "read"])
+      # Note: charlie already exists in CSV, use eve instead
+      {:ok, enforcer} = Management.add_policy(enforcer, ["eve", "data5", "read"])
       {:ok, enforcer} = Management.add_policy(enforcer, ["dave", "data4", "write"])
 
       # Matcher: only read actions
@@ -621,9 +631,11 @@ defmodule CasbinEx2.ManagementAPITest do
       {:ok, filtered} =
         Management.get_filtered_named_policy_with_matcher(enforcer, "p", matcher)
 
-      assert length(filtered) == 2
+      # Should have 4 read policies: editor, alice, charlie (from CSV), eve (added)
+      assert length(filtered) == 4
       assert ["alice", "data1", "read"] in filtered
       assert ["charlie", "data3", "read"] in filtered
+      assert ["editor", "data2", "read"] in filtered
     end
 
     test "returns empty list when no policies match", %{enforcer: enforcer} do

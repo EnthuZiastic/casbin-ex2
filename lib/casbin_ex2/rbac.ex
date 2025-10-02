@@ -377,6 +377,113 @@ defmodule CasbinEx2.RBAC do
     remove_grouping_policy(enforcer, params)
   end
 
+  @doc """
+  Deletes all roles for a user inside a domain.
+
+  Returns `{:ok, enforcer}` if successful (even if no roles were deleted),
+  `{:error, reason}` if role manager is not initialized.
+
+  ## Examples
+
+      {:ok, enforcer} = delete_roles_for_user_in_domain(enforcer, "alice", "domain1")
+
+  """
+  @spec delete_roles_for_user_in_domain(Enforcer.t(), String.t(), String.t()) ::
+          {:ok, Enforcer.t()} | {:error, term()}
+  def delete_roles_for_user_in_domain(%Enforcer{role_manager: nil} = _enforcer, _user, _domain) do
+    {:error, "role manager is not initialized"}
+  end
+
+  def delete_roles_for_user_in_domain(
+        %Enforcer{role_manager: role_manager} = enforcer,
+        user,
+        domain
+      ) do
+    roles = CasbinEx2.RoleManager.get_roles(role_manager, user, domain)
+
+    if Enum.empty?(roles) do
+      {:ok, enforcer}
+    else
+      rules = Enum.map(roles, fn role -> [user, role, domain] end)
+      remove_grouping_policies(enforcer, rules)
+    end
+  end
+
+  @doc """
+  Deletes all users and their role assignments for a specific domain.
+
+  This removes all grouping policies (role assignments) that belong to the specified domain.
+
+  ## Examples
+
+      {:ok, enforcer} = delete_all_users_by_domain(enforcer, "tenant1")
+
+  """
+  @spec delete_all_users_by_domain(Enforcer.t(), String.t()) ::
+          {:ok, Enforcer.t()} | {:error, term()}
+  def delete_all_users_by_domain(
+        %Enforcer{grouping_policies: grouping_policies} = enforcer,
+        domain
+      ) do
+    # Find all grouping policies for this domain
+    rules_to_remove =
+      grouping_policies
+      |> Map.get("g", [])
+      |> Enum.filter(fn rule ->
+        case rule do
+          [_user, _role, ^domain] -> true
+          [_user, _role, rule_domain | _] when rule_domain == domain -> true
+          _ -> false
+        end
+      end)
+
+    if Enum.empty?(rules_to_remove) do
+      {:ok, enforcer}
+    else
+      remove_grouping_policies(enforcer, rules_to_remove)
+    end
+  end
+
+  @doc """
+  Deletes all role assignments (grouping policies) for multiple domains.
+
+  ## Examples
+
+      {:ok, enforcer} = delete_domains(enforcer, ["domain1", "domain2", "domain3"])
+
+  """
+  @spec delete_domains(Enforcer.t(), [String.t()]) :: {:ok, Enforcer.t()} | {:error, term()}
+  def delete_domains(%Enforcer{} = enforcer, domains) when is_list(domains) do
+    Enum.reduce_while(domains, {:ok, enforcer}, fn domain, {:ok, acc_enforcer} ->
+      case delete_all_users_by_domain(acc_enforcer, domain) do
+        {:ok, updated_enforcer} -> {:cont, {:ok, updated_enforcer}}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  @doc """
+  Gets all unique domains from the current grouping policies.
+
+  Returns a list of all unique domain values found in role assignments.
+
+  ## Examples
+
+      domains = get_all_domains(enforcer)
+      # => ["domain1", "domain2", "tenant_a"]
+
+  """
+  @spec get_all_domains(Enforcer.t()) :: [String.t()]
+  def get_all_domains(%Enforcer{grouping_policies: grouping_policies}) do
+    grouping_policies
+    |> Map.get("g", [])
+    |> Enum.filter(fn rule -> length(rule) >= 3 end)
+    |> Enum.map(fn rule -> Enum.at(rule, 2) end)
+    |> Enum.reject(&(&1 == "" || is_nil(&1)))
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
   # Helper functions for grouping policy management
 
   defp add_grouping_policy(%Enforcer{grouping_policies: _grouping_policies} = enforcer, params) do

@@ -323,13 +323,37 @@ Gets all users in the specified domain.
 CasbinEx2.get_all_users_by_domain(name, domain)
 ```
 
-### `delete_all_users_by_domain/2`
+### `delete_all_users_by_domain/2` ✨ **ENHANCED**
 
-Deletes all users in the specified domain.
+Deletes all users and their role assignments in the specified domain.
 
 ```elixir
-CasbinEx2.delete_all_users_by_domain(name, domain)
+CasbinEx2.RBAC.delete_all_users_by_domain(enforcer, domain)
 ```
+
+**Parameters:**
+- `enforcer` - The enforcer struct
+- `domain` - The domain to clear
+
+**Returns:** `{:ok, enforcer}` or `{:error, reason}`
+
+**Use Case:** Multi-tenant cleanup when removing a tenant domain.
+
+### `delete_domains/2` ✨ **NEW**
+
+Batch deletes multiple domains and all their role assignments.
+
+```elixir
+CasbinEx2.RBAC.delete_domains(enforcer, domains)
+```
+
+**Parameters:**
+- `enforcer` - The enforcer struct
+- `domains` - List of domain strings to delete
+
+**Returns:** `{:ok, enforcer}` or `{:error, reason}`
+
+**Use Case:** Bulk domain cleanup in multi-tenant systems.
 
 ## Batch Operations
 
@@ -409,6 +433,74 @@ CasbinEx2.save_policy(name)
 ```
 
 **Returns:** `:ok` or `{:error, reason}`
+
+### `load_filtered_policy/2` ✨ **NEW**
+
+Loads a filtered subset of policies from the adapter based on filter criteria.
+
+```elixir
+CasbinEx2.Enforcer.load_filtered_policy(enforcer, filter)
+```
+
+**Parameters:**
+- `enforcer` - The enforcer struct
+- `filter` - Map containing filter criteria (e.g., `%{subject: "alice", domain: "domain1"}`)
+
+**Returns:** `{:ok, enforcer}` or `{:error, reason}`
+
+**Use Case:** Large-scale deployments where loading all policies would be inefficient.
+
+### `load_incremental_filtered_policy/2` ✨ **NEW**
+
+Loads additional filtered policies without clearing existing ones.
+
+```elixir
+CasbinEx2.Enforcer.load_incremental_filtered_policy(enforcer, filter)
+```
+
+**Parameters:**
+- `enforcer` - The enforcer struct
+- `filter` - Map containing filter criteria
+
+**Returns:** `{:ok, enforcer}` or `{:error, reason}`
+
+**Use Case:** Incrementally loading additional policies for multi-tenant systems.
+
+### `is_filtered?/1` ✨ **NEW**
+
+Checks if the loaded policy has been filtered.
+
+```elixir
+CasbinEx2.Enforcer.is_filtered?(enforcer)
+```
+
+**Returns:** `true` if policies were loaded using filtered loading, `false` otherwise
+
+### `clear_policy/1` ✨ **NEW**
+
+Clears all policies and grouping policies from the enforcer without affecting adapter storage.
+
+```elixir
+CasbinEx2.Enforcer.clear_policy(enforcer)
+```
+
+**Returns:** Updated enforcer struct with empty policies
+
+### `load_model/2` ✨ **NEW**
+
+Reloads the model from a file path.
+
+```elixir
+CasbinEx2.Enforcer.load_model(enforcer, model_path)
+```
+
+**Parameters:**
+- `enforcer` - The enforcer struct
+- `model_path` - Path to the model configuration file
+
+**Returns:** `{:ok, enforcer}` or `{:error, reason}`
+
+**Use Case:** Dynamic model updates when the model configuration file has been updated.
 
 ## Management APIs
 
