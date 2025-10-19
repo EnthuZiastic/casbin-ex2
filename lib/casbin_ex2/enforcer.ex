@@ -1701,9 +1701,12 @@ defmodule CasbinEx2.Enforcer do
   end
 
   # Check if an operator appears at the top level (outside parentheses)
+  @spec has_top_level_operator?(String.t(), String.t()) :: boolean()
   defp has_top_level_operator?(expr, operator) do
     check_top_level_operator(expr, operator, 0)
   end
+
+  @spec check_top_level_operator(String.t(), String.t(), non_neg_integer()) :: boolean()
 
   defp check_top_level_operator("", _operator, _level), do: false
 
@@ -1711,16 +1714,31 @@ defmodule CasbinEx2.Enforcer do
     check_top_level_operator(rest, operator, level + 1)
   end
 
-  defp check_top_level_operator(<<?), rest::binary>>, operator, level) do
+  defp check_top_level_operator(<<?), rest::binary>>, operator, level) when level > 0 do
     check_top_level_operator(rest, operator, level - 1)
+  end
+
+  # Handle unbalanced closing paren - don't go negative
+  defp check_top_level_operator(<<?), rest::binary>>, operator, 0) do
+    check_top_level_operator(rest, operator, 0)
   end
 
   defp check_top_level_operator(str, operator, 0 = level) do
     if String.starts_with?(str, operator) do
       true
     else
-      <<_char::utf8, rest::binary>> = str
-      check_top_level_operator(rest, operator, level)
+      case str do
+        <<_char::utf8, rest::binary>> ->
+          check_top_level_operator(rest, operator, level)
+
+        # Handle invalid UTF-8 by consuming one byte at a time
+        <<_byte, rest::binary>> ->
+          check_top_level_operator(rest, operator, level)
+
+        # Empty string case (shouldn't happen, but defensive)
+        _ ->
+          false
+      end
     end
   end
 
@@ -1728,17 +1746,31 @@ defmodule CasbinEx2.Enforcer do
     check_top_level_operator(rest, operator, level)
   end
 
+  # Handle invalid UTF-8 gracefully
+  defp check_top_level_operator(<<_byte, rest::binary>>, operator, level) do
+    check_top_level_operator(rest, operator, level)
+  end
+
   # Split expression by operator, respecting parentheses
+  @spec split_by_operator(String.t(), String.t()) :: [String.t()]
   defp split_by_operator(expr, operator) do
     # Track parenthesis nesting level to avoid splitting inside parentheses
     op_len = String.length(operator)
 
-    do_split_by_operator(expr, operator, op_len, 0, "", [])
+    do_split_by_operator(expr, operator, op_len, 0, [], [])
     |> Enum.reverse()
-    |> Enum.map(&String.trim/1)
+    |> Enum.map(fn part -> part |> IO.iodata_to_binary() |> String.trim() end)
     |> Enum.filter(fn part -> part != "" end)
   end
 
+  @spec do_split_by_operator(
+          String.t(),
+          String.t(),
+          non_neg_integer(),
+          non_neg_integer(),
+          iodata(),
+          [iodata()]
+        ) :: [iodata()]
   defp do_split_by_operator("", _operator, _op_len, _level, current, acc) do
     # End of string, add the last part
     [current | acc]
@@ -1746,12 +1778,19 @@ defmodule CasbinEx2.Enforcer do
 
   defp do_split_by_operator(<<?(, rest::binary>>, operator, op_len, level, current, acc) do
     # Opening paren - increase nesting level
-    do_split_by_operator(rest, operator, op_len, level + 1, current <> "(", acc)
+    do_split_by_operator(rest, operator, op_len, level + 1, [current, "("], acc)
   end
 
-  defp do_split_by_operator(<<?), rest::binary>>, operator, op_len, level, current, acc) do
+  defp do_split_by_operator(<<?), rest::binary>>, operator, op_len, level, current, acc)
+       when level > 0 do
     # Closing paren - decrease nesting level
-    do_split_by_operator(rest, operator, op_len, level - 1, current <> ")", acc)
+    do_split_by_operator(rest, operator, op_len, level - 1, [current, ")"], acc)
+  end
+
+  # Handle unbalanced closing paren (more closing than opening)
+  defp do_split_by_operator(<<?), rest::binary>>, operator, op_len, 0, current, acc) do
+    # Keep the closing paren but don't go negative - this indicates unbalanced parens
+    do_split_by_operator(rest, operator, op_len, 0, [current, ")"], acc)
   end
 
   defp do_split_by_operator(str, operator, op_len, 0 = level, current, acc) do
@@ -1759,19 +1798,32 @@ defmodule CasbinEx2.Enforcer do
     if String.starts_with?(str, operator) do
       # Found operator at top level - split here
       rest = String.slice(str, op_len..-1//1)
-      do_split_by_operator(rest, operator, op_len, level, "", [current | acc])
+      do_split_by_operator(rest, operator, op_len, level, [], [current | acc])
     else
       # Not the operator, just consume the character
-      <<char::utf8, rest::binary>> = str
-      do_split_by_operator(rest, operator, op_len, level, current <> <<char::utf8>>, acc)
+      case str do
+        <<char::utf8, rest::binary>> ->
+          do_split_by_operator(rest, operator, op_len, level, [current, <<char::utf8>>], acc)
+
+        # Handle invalid UTF-8 by consuming one byte
+        <<byte, rest::binary>> ->
+          do_split_by_operator(rest, operator, op_len, level, [current, <<byte>>], acc)
+      end
     end
   end
 
   defp do_split_by_operator(<<char::utf8, rest::binary>>, operator, op_len, level, current, acc) do
     # Inside parentheses (level > 0), just consume characters
-    do_split_by_operator(rest, operator, op_len, level, current <> <<char::utf8>>, acc)
+    do_split_by_operator(rest, operator, op_len, level, [current, <<char::utf8>>], acc)
   end
 
+  # Handle invalid UTF-8 gracefully when inside parentheses
+  defp do_split_by_operator(<<byte, rest::binary>>, operator, op_len, level, current, acc) do
+    do_split_by_operator(rest, operator, op_len, level, [current, <<byte>>], acc)
+  end
+
+  @spec evaluate_or_expression([String.t()], [String.t()], [String.t()], map()) ::
+          {:ok, boolean()} | {:error, term()}
   defp evaluate_or_expression(parts, request, policy, function_map) do
     results =
       Enum.map(parts, fn part ->
@@ -1797,6 +1849,8 @@ defmodule CasbinEx2.Enforcer do
     {:ok, any_true}
   end
 
+  @spec evaluate_and_expression([String.t()], [String.t()], [String.t()], map()) ::
+          {:ok, boolean()} | {:error, term()}
   defp evaluate_and_expression(parts, request, policy, function_map) do
     results =
       Enum.map(parts, fn part ->
@@ -1823,6 +1877,8 @@ defmodule CasbinEx2.Enforcer do
     {:ok, all_true}
   end
 
+  @spec evaluate_single_expression(String.t(), [String.t()], [String.t()], map()) ::
+          {:ok, boolean()} | {:error, term()}
   defp evaluate_single_expression(expr, request, policy, function_map) do
     cond do
       # Handle equality comparisons (including those with function calls)
