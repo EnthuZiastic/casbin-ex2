@@ -1679,14 +1679,16 @@ defmodule CasbinEx2.Enforcer do
 
   # Simple expression parser and evaluator
   defp parse_and_evaluate_expression(expr, request, policy, function_map) do
-    # Handle expressions with || and && operators (|| has lower precedence)
-    # Split by || first, then each part may contain &&
+    # Handle expressions with || and && operators
+    # We need to check which operator appears at the TOP LEVEL (outside parentheses)
+    # || has lower precedence, so split by that first IF it exists at top level
+    # Otherwise split by &&
     cond do
-      String.contains?(expr, "||") ->
+      has_top_level_operator?(expr, "||") ->
         parts = split_by_operator(expr, "||")
         evaluate_or_expression(parts, request, policy, function_map)
 
-      String.contains?(expr, "&&") ->
+      has_top_level_operator?(expr, "&&") ->
         parts = split_by_operator(expr, "&&")
         evaluate_and_expression(parts, request, policy, function_map)
 
@@ -1696,13 +1698,76 @@ defmodule CasbinEx2.Enforcer do
     end
   end
 
+  # Check if an operator appears at the top level (outside parentheses)
+  defp has_top_level_operator?(expr, operator) do
+    check_top_level_operator(expr, operator, 0)
+  end
+
+  defp check_top_level_operator("", _operator, _level), do: false
+
+  defp check_top_level_operator(<<?(, rest::binary>>, operator, level) do
+    check_top_level_operator(rest, operator, level + 1)
+  end
+
+  defp check_top_level_operator(<<?), rest::binary>>, operator, level) do
+    check_top_level_operator(rest, operator, level - 1)
+  end
+
+  defp check_top_level_operator(str, operator, 0 = level) do
+    if String.starts_with?(str, operator) do
+      true
+    else
+      <<_char::utf8, rest::binary>> = str
+      check_top_level_operator(rest, operator, level)
+    end
+  end
+
+  defp check_top_level_operator(<<_char::utf8, rest::binary>>, operator, level) do
+    check_top_level_operator(rest, operator, level)
+  end
+
   # Split expression by operator, respecting parentheses
   defp split_by_operator(expr, operator) do
-    # Simple split - for complex expressions with parentheses,
-    # this would need to track nesting level
-    expr
-    |> String.split(operator)
+    # Track parenthesis nesting level to avoid splitting inside parentheses
+    op_len = String.length(operator)
+
+    do_split_by_operator(expr, operator, op_len, 0, "", [])
+    |> Enum.reverse()
     |> Enum.map(&String.trim/1)
+    |> Enum.filter(fn part -> part != "" end)
+  end
+
+  defp do_split_by_operator("", _operator, _op_len, _level, current, acc) do
+    # End of string, add the last part
+    [current | acc]
+  end
+
+  defp do_split_by_operator(<<?(, rest::binary>>, operator, op_len, level, current, acc) do
+    # Opening paren - increase nesting level
+    do_split_by_operator(rest, operator, op_len, level + 1, current <> "(", acc)
+  end
+
+  defp do_split_by_operator(<<?), rest::binary>>, operator, op_len, level, current, acc) do
+    # Closing paren - decrease nesting level
+    do_split_by_operator(rest, operator, op_len, level - 1, current <> ")", acc)
+  end
+
+  defp do_split_by_operator(str, operator, op_len, 0 = level, current, acc) do
+    # At top level (level 0), check if we're at the operator
+    if String.starts_with?(str, operator) do
+      # Found operator at top level - split here
+      rest = String.slice(str, op_len..-1//1)
+      do_split_by_operator(rest, operator, op_len, level, "", [current | acc])
+    else
+      # Not the operator, just consume the character
+      <<char::utf8, rest::binary>> = str
+      do_split_by_operator(rest, operator, op_len, level, current <> <<char::utf8>>, acc)
+    end
+  end
+
+  defp do_split_by_operator(<<char::utf8, rest::binary>>, operator, op_len, level, current, acc) do
+    # Inside parentheses (level > 0), just consume characters
+    do_split_by_operator(rest, operator, op_len, level, current <> <<char::utf8>>, acc)
   end
 
   defp evaluate_or_expression(parts, request, policy, function_map) do
@@ -1733,7 +1798,19 @@ defmodule CasbinEx2.Enforcer do
   defp evaluate_and_expression(parts, request, policy, function_map) do
     results =
       Enum.map(parts, fn part ->
-        case evaluate_single_expression(part, request, policy, function_map) do
+        # Each part might be a parenthesized expression or single expression
+        part_trimmed = String.trim(part)
+
+        part_expr =
+          if String.starts_with?(part_trimmed, "(") and String.ends_with?(part_trimmed, ")") do
+            # Remove outer parentheses
+            String.slice(part_trimmed, 1..-2//1) |> String.trim()
+          else
+            part_trimmed
+          end
+
+        # Recursively parse the part (it might contain OR operators)
+        case parse_and_evaluate_expression(part_expr, request, policy, function_map) do
           {:ok, result} -> result
           {:error, _reason} -> false
         end
