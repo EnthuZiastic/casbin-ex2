@@ -2097,12 +2097,19 @@ defmodule CasbinEx2.Enforcer do
         end
 
       # 5-parameter models: territory-based [sub, dom, obj, act, territory] or BIBA/BLP [sub, sub_level, obj, obj_level, act]
-      # Territory-based: act is at index 3
-      # BIBA/BLP: act is at index 4
-      # We can detect territory-based by checking if r.territory handler will be used (has explicit handler now)
-      # For now, prioritize territory-based (index 3) since it's more common
+      # Detect model type by checking second parameter:
+      # - Territory/Domain-based: second param is a string domain (e.g., "web", "admin")
+      # - BIBA/BLP: second param is a numeric level (e.g., 1, 2, 3)
       5 ->
-        Enum.at(request, 3, "")
+        second_param = Enum.at(request, 1, "")
+
+        if is_number(second_param) do
+          # BIBA/BLP model: [sub, sub_level, obj, obj_level, act]
+          Enum.at(request, 4, "")
+        else
+          # Territory-based model: [sub, dom, obj, act, territory]
+          Enum.at(request, 3, "")
+        end
 
       # LBAC: [sub, conf, integ, obj, conf, integ, act]
       7 ->
@@ -2130,11 +2137,28 @@ defmodule CasbinEx2.Enforcer do
       3 -> Enum.at(policy, 1, "")
       # Domain-based: [sub, dom, obj, act]
       4 -> Enum.at(policy, 2, "")
-      # 5-parameter: territory-based [sub, dom, obj, act, territory] OR time-based [sub, obj, act, start_time, end_time]
-      # Territory-based: obj is at index 2
-      # Time-based: obj is at index 1
-      # Prioritize territory-based (index 2) as it's more common
-      5 -> Enum.at(policy, 2, "")
+      # 5-parameter models: Detect model type
+      5 ->
+        second_param = Enum.at(policy, 1, "")
+        fourth_param = Enum.at(policy, 3, "")
+
+        cond do
+          # BIBA/BLP model: second param is numeric level
+          is_number(second_param) ->
+            # [sub, sub_level, obj, obj_level, act]
+            Enum.at(policy, 2, "")
+
+          # Time-based model: fourth param looks like a timestamp
+          timestamp?(fourth_param) ->
+            # [sub, obj, act, start_time, end_time]
+            Enum.at(policy, 1, "")
+
+          # Territory-based model: has domain at index 1
+          true ->
+            # [sub, dom, obj, act, territory]
+            Enum.at(policy, 2, "")
+        end
+
       # Default to standard
       _ -> Enum.at(policy, 1, "")
     end
@@ -2146,11 +2170,28 @@ defmodule CasbinEx2.Enforcer do
       3 -> Enum.at(policy, 2, "")
       # Domain-based: [sub, dom, obj, act]
       4 -> Enum.at(policy, 3, "")
-      # 5-parameter: territory-based [sub, dom, obj, act, territory] OR time-based [sub, obj, act, start_time, end_time]
-      # Territory-based: act is at index 3
-      # Time-based: act is at index 2
-      # Prioritize territory-based (index 3) as it's more common
-      5 -> Enum.at(policy, 3, "")
+      # 5-parameter models: Detect model type
+      5 ->
+        second_param = Enum.at(policy, 1, "")
+        fourth_param = Enum.at(policy, 3, "")
+
+        cond do
+          # BIBA/BLP model: second param is numeric level
+          is_number(second_param) ->
+            # [sub, sub_level, obj, obj_level, act]
+            Enum.at(policy, 4, "")
+
+          # Time-based model: fourth param looks like a timestamp
+          timestamp?(fourth_param) ->
+            # [sub, obj, act, start_time, end_time]
+            Enum.at(policy, 2, "")
+
+          # Territory-based model: has domain at index 1
+          true ->
+            # [sub, dom, obj, act, territory]
+            Enum.at(policy, 3, "")
+        end
+
       # Default to standard
       _ -> Enum.at(policy, 2, "")
     end
