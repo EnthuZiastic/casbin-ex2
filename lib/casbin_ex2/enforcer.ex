@@ -1653,7 +1653,9 @@ defmodule CasbinEx2.Enforcer do
     Enum.any?(g_policies, fn policy ->
       case policy do
         [p_arg1, p_arg2, p_arg3] ->
-          arg1 == p_arg1 && arg2 == p_arg2 && arg3 == p_arg3
+          # Support wildcard matching on domain (arg3)
+          # arg3 matches if it's exactly equal OR if policy has wildcard "*"
+          arg1 == p_arg1 && arg2 == p_arg2 && (arg3 == p_arg3 || p_arg3 == "*")
 
         [p_arg1, p_arg2] when arg3 == "" ->
           # Handle 2-argument case where domain is empty

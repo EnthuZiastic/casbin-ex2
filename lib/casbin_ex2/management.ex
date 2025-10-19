@@ -273,18 +273,35 @@ defmodule CasbinEx2.Management do
       updated_enforcer = %{enforcer | grouping_policies: updated_grouping_policies}
 
       # Update role manager if it's the default "g" type
-      updated_enforcer =
-        if ptype == "g" && length(params) >= 2 do
-          [user, role | _rest] = params
-          updated_rm = CasbinEx2.RoleManager.add_link(role_manager, user, role)
-          %{updated_enforcer | role_manager: updated_rm}
-        else
-          updated_enforcer
-        end
+      updated_enforcer = update_role_manager_for_grouping(updated_enforcer, ptype, params)
 
       {:ok, updated_enforcer}
     end
   end
+
+  # Update role manager when adding grouping policy
+  defp update_role_manager_for_grouping(
+         %Enforcer{role_manager: role_manager} = enforcer,
+         "g",
+         params
+       )
+       when length(params) >= 2 do
+    # Support both 2-parameter (user, role) and 3-parameter (user, role, domain) forms
+    case params do
+      [user, role, domain | _rest] ->
+        updated_rm = CasbinEx2.RoleManager.add_link(role_manager, user, role, domain)
+        %{enforcer | role_manager: updated_rm}
+
+      [user, role] ->
+        updated_rm = CasbinEx2.RoleManager.add_link(role_manager, user, role, "")
+        %{enforcer | role_manager: updated_rm}
+
+      _ ->
+        enforcer
+    end
+  end
+
+  defp update_role_manager_for_grouping(enforcer, _ptype, _params), do: enforcer
 
   @doc """
   Adds named role inheritance rules to the current policy.
