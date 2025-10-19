@@ -2063,7 +2063,8 @@ defmodule CasbinEx2.Enforcer do
           Enum.at(request, 2, "")
         end
 
-      # 5-parameter models: territory-based [sub, dom, obj, act, territory] or BIBA/BLP [sub, sub_level, obj, obj_level, act]
+      # 5-parameter models: territory-based [sub, dom, obj, act, territory]
+      # or BIBA/BLP [sub, sub_level, obj, obj_level, act]
       # Territory-based models have dom at index 1, BIBA/BLP does not
       # For both models, obj is at index 2
       5 ->
@@ -2096,7 +2097,8 @@ defmodule CasbinEx2.Enforcer do
           Enum.at(request, 3, "")
         end
 
-      # 5-parameter models: territory-based [sub, dom, obj, act, territory] or BIBA/BLP [sub, sub_level, obj, obj_level, act]
+      # 5-parameter models: territory-based [sub, dom, obj, act, territory]
+      # or BIBA/BLP [sub, sub_level, obj, obj_level, act]
       # Detect model type by checking second parameter:
       # - Territory/Domain-based: second param is a string domain (e.g., "web", "admin")
       # - BIBA/BLP: second param is a numeric level (e.g., 1, 2, 3)
