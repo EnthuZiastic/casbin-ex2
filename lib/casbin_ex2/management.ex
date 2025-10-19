@@ -260,7 +260,7 @@ defmodule CasbinEx2.Management do
   Returns {:ok, enforcer} if successful, {:error, reason} if failed.
   """
   def add_named_grouping_policy(
-        %Enforcer{grouping_policies: grouping_policies, role_manager: role_manager} = enforcer,
+        %Enforcer{grouping_policies: grouping_policies, role_manager: _role_manager} = enforcer,
         ptype,
         params
       ) do
