@@ -2132,11 +2132,17 @@ defmodule CasbinEx2.Enforcer do
   defp substitute_parameter("p.obj", _request, policy) do
     case length(policy) do
       # Single-field: [obj]
-      1 -> Enum.at(policy, 0, "")
+      1 ->
+        Enum.at(policy, 0, "")
+
       # Standard: [sub, obj, act]
-      3 -> Enum.at(policy, 1, "")
+      3 ->
+        Enum.at(policy, 1, "")
+
       # Domain-based: [sub, dom, obj, act]
-      4 -> Enum.at(policy, 2, "")
+      4 ->
+        Enum.at(policy, 2, "")
+
       # 5-parameter models: Detect model type
       5 ->
         second_param = Enum.at(policy, 1, "")
@@ -2160,16 +2166,21 @@ defmodule CasbinEx2.Enforcer do
         end
 
       # Default to standard
-      _ -> Enum.at(policy, 1, "")
+      _ ->
+        Enum.at(policy, 1, "")
     end
   end
 
   defp substitute_parameter("p.act", _request, policy) do
     case length(policy) do
       # Standard: [sub, obj, act]
-      3 -> Enum.at(policy, 2, "")
+      3 ->
+        Enum.at(policy, 2, "")
+
       # Domain-based: [sub, dom, obj, act]
-      4 -> Enum.at(policy, 3, "")
+      4 ->
+        Enum.at(policy, 3, "")
+
       # 5-parameter models: Detect model type
       5 ->
         second_param = Enum.at(policy, 1, "")
@@ -2193,7 +2204,8 @@ defmodule CasbinEx2.Enforcer do
         end
 
       # Default to standard
-      _ -> Enum.at(policy, 2, "")
+      _ ->
+        Enum.at(policy, 2, "")
     end
   end
 
