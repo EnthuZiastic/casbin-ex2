@@ -2063,7 +2063,9 @@ defmodule CasbinEx2.Enforcer do
           Enum.at(request, 2, "")
         end
 
-      # BIBA/BLP: [sub, sub_level, obj, obj_level, act]
+      # 5-parameter models: territory-based [sub, dom, obj, act, territory] or BIBA/BLP [sub, sub_level, obj, obj_level, act]
+      # Territory-based models have dom at index 1, BIBA/BLP does not
+      # For both models, obj is at index 2
       5 ->
         Enum.at(request, 2, "")
 
@@ -2094,9 +2096,13 @@ defmodule CasbinEx2.Enforcer do
           Enum.at(request, 3, "")
         end
 
-      # BIBA/BLP: [sub, sub_level, obj, obj_level, act]
+      # 5-parameter models: territory-based [sub, dom, obj, act, territory] or BIBA/BLP [sub, sub_level, obj, obj_level, act]
+      # Territory-based: act is at index 3
+      # BIBA/BLP: act is at index 4
+      # We can detect territory-based by checking if r.territory handler will be used (has explicit handler now)
+      # For now, prioritize territory-based (index 3) since it's more common
       5 ->
-        Enum.at(request, 4, "")
+        Enum.at(request, 3, "")
 
       # LBAC: [sub, conf, integ, obj, conf, integ, act]
       7 ->
@@ -2124,8 +2130,11 @@ defmodule CasbinEx2.Enforcer do
       3 -> Enum.at(policy, 1, "")
       # Domain-based: [sub, dom, obj, act]
       4 -> Enum.at(policy, 2, "")
-      # Time-based: [sub, obj, act, start_time, end_time]
-      5 -> Enum.at(policy, 1, "")
+      # 5-parameter: territory-based [sub, dom, obj, act, territory] OR time-based [sub, obj, act, start_time, end_time]
+      # Territory-based: obj is at index 2
+      # Time-based: obj is at index 1
+      # Prioritize territory-based (index 2) as it's more common
+      5 -> Enum.at(policy, 2, "")
       # Default to standard
       _ -> Enum.at(policy, 1, "")
     end
@@ -2137,8 +2146,11 @@ defmodule CasbinEx2.Enforcer do
       3 -> Enum.at(policy, 2, "")
       # Domain-based: [sub, dom, obj, act]
       4 -> Enum.at(policy, 3, "")
-      # Time-based: [sub, obj, act, start_time, end_time]
-      5 -> Enum.at(policy, 2, "")
+      # 5-parameter: territory-based [sub, dom, obj, act, territory] OR time-based [sub, obj, act, start_time, end_time]
+      # Territory-based: act is at index 3
+      # Time-based: act is at index 2
+      # Prioritize territory-based (index 3) as it's more common
+      5 -> Enum.at(policy, 3, "")
       # Default to standard
       _ -> Enum.at(policy, 2, "")
     end
@@ -2150,6 +2162,8 @@ defmodule CasbinEx2.Enforcer do
   defp substitute_parameter("p.start_time", _request, policy), do: Enum.at(policy, 3, "")
   # Time-based: [sub, obj, act, start_time, end_time]
   defp substitute_parameter("p.end_time", _request, policy), do: Enum.at(policy, 4, "")
+  # Territory-based: [sub, dom, obj, act, territory]
+  defp substitute_parameter("p.territory", _request, policy), do: Enum.at(policy, 4, "")
 
   # BIBA/BLP: [sub, sub_level, obj, obj_level, act]
   defp substitute_parameter("r.sub_level", request, _policy), do: Enum.at(request, 1, "")
@@ -2165,6 +2179,9 @@ defmodule CasbinEx2.Enforcer do
     do: Enum.at(request, 4, "")
 
   defp substitute_parameter("r.object_integrity", request, _policy), do: Enum.at(request, 5, "")
+
+  # Territory-based: [sub, dom, obj, act, territory]
+  defp substitute_parameter("r.territory", request, _policy), do: Enum.at(request, 4, "")
 
   # Handle generic request parameters like r.ip, r.role, etc.
   defp substitute_parameter("r." <> _field, request, _policy) do
