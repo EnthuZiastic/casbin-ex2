@@ -1653,7 +1653,9 @@ defmodule CasbinEx2.Enforcer do
     Enum.any?(g_policies, fn policy ->
       case policy do
         [p_arg1, p_arg2, p_arg3] ->
-          arg1 == p_arg1 && arg2 == p_arg2 && arg3 == p_arg3
+          # Support wildcard matching on domain (arg3)
+          # arg3 matches if it's exactly equal OR if policy has wildcard "*"
+          arg1 == p_arg1 && arg2 == p_arg2 && (arg3 == p_arg3 || p_arg3 == "*")
 
         [p_arg1, p_arg2] when arg3 == "" ->
           # Handle 2-argument case where domain is empty
@@ -1679,14 +1681,16 @@ defmodule CasbinEx2.Enforcer do
 
   # Simple expression parser and evaluator
   defp parse_and_evaluate_expression(expr, request, policy, function_map) do
-    # Handle expressions with || and && operators (|| has lower precedence)
-    # Split by || first, then each part may contain &&
+    # Handle expressions with || and && operators
+    # We need to check which operator appears at the TOP LEVEL (outside parentheses)
+    # || has lower precedence, so split by that first IF it exists at top level
+    # Otherwise split by &&
     cond do
-      String.contains?(expr, "||") ->
+      has_top_level_operator?(expr, "||") ->
         parts = split_by_operator(expr, "||")
         evaluate_or_expression(parts, request, policy, function_map)
 
-      String.contains?(expr, "&&") ->
+      has_top_level_operator?(expr, "&&") ->
         parts = split_by_operator(expr, "&&")
         evaluate_and_expression(parts, request, policy, function_map)
 
@@ -1696,15 +1700,130 @@ defmodule CasbinEx2.Enforcer do
     end
   end
 
-  # Split expression by operator, respecting parentheses
-  defp split_by_operator(expr, operator) do
-    # Simple split - for complex expressions with parentheses,
-    # this would need to track nesting level
-    expr
-    |> String.split(operator)
-    |> Enum.map(&String.trim/1)
+  # Check if an operator appears at the top level (outside parentheses)
+  @spec has_top_level_operator?(String.t(), String.t()) :: boolean()
+  defp has_top_level_operator?(expr, operator) do
+    check_top_level_operator(expr, operator, 0)
   end
 
+  @spec check_top_level_operator(String.t(), String.t(), non_neg_integer()) :: boolean()
+
+  defp check_top_level_operator("", _operator, _level), do: false
+
+  defp check_top_level_operator(<<?(, rest::binary>>, operator, level) do
+    check_top_level_operator(rest, operator, level + 1)
+  end
+
+  defp check_top_level_operator(<<?), rest::binary>>, operator, level) when level > 0 do
+    check_top_level_operator(rest, operator, level - 1)
+  end
+
+  # Handle unbalanced closing paren - don't go negative
+  defp check_top_level_operator(<<?), rest::binary>>, operator, 0) do
+    check_top_level_operator(rest, operator, 0)
+  end
+
+  defp check_top_level_operator(str, operator, 0 = level) do
+    if String.starts_with?(str, operator) do
+      true
+    else
+      case str do
+        <<_char::utf8, rest::binary>> ->
+          check_top_level_operator(rest, operator, level)
+
+        # Handle invalid UTF-8 by consuming one byte at a time
+        <<_byte, rest::binary>> ->
+          check_top_level_operator(rest, operator, level)
+
+        # Empty string case (shouldn't happen, but defensive)
+        _ ->
+          false
+      end
+    end
+  end
+
+  defp check_top_level_operator(<<_char::utf8, rest::binary>>, operator, level) do
+    check_top_level_operator(rest, operator, level)
+  end
+
+  # Handle invalid UTF-8 gracefully
+  defp check_top_level_operator(<<_byte, rest::binary>>, operator, level) do
+    check_top_level_operator(rest, operator, level)
+  end
+
+  # Split expression by operator, respecting parentheses
+  @spec split_by_operator(String.t(), String.t()) :: [String.t()]
+  defp split_by_operator(expr, operator) do
+    # Track parenthesis nesting level to avoid splitting inside parentheses
+    op_len = String.length(operator)
+
+    do_split_by_operator(expr, operator, op_len, 0, [], [])
+    |> Enum.reverse()
+    |> Enum.map(fn part -> part |> IO.iodata_to_binary() |> String.trim() end)
+    |> Enum.filter(fn part -> part != "" end)
+  end
+
+  @spec do_split_by_operator(
+          String.t(),
+          String.t(),
+          non_neg_integer(),
+          non_neg_integer(),
+          iodata(),
+          [iodata()]
+        ) :: [iodata()]
+  defp do_split_by_operator("", _operator, _op_len, _level, current, acc) do
+    # End of string, add the last part
+    [current | acc]
+  end
+
+  defp do_split_by_operator(<<?(, rest::binary>>, operator, op_len, level, current, acc) do
+    # Opening paren - increase nesting level
+    do_split_by_operator(rest, operator, op_len, level + 1, [current, "("], acc)
+  end
+
+  defp do_split_by_operator(<<?), rest::binary>>, operator, op_len, level, current, acc)
+       when level > 0 do
+    # Closing paren - decrease nesting level
+    do_split_by_operator(rest, operator, op_len, level - 1, [current, ")"], acc)
+  end
+
+  # Handle unbalanced closing paren (more closing than opening)
+  defp do_split_by_operator(<<?), rest::binary>>, operator, op_len, 0, current, acc) do
+    # Keep the closing paren but don't go negative - this indicates unbalanced parens
+    do_split_by_operator(rest, operator, op_len, 0, [current, ")"], acc)
+  end
+
+  defp do_split_by_operator(str, operator, op_len, 0 = level, current, acc) do
+    # At top level (level 0), check if we're at the operator
+    if String.starts_with?(str, operator) do
+      # Found operator at top level - split here
+      rest = String.slice(str, op_len..-1//1)
+      do_split_by_operator(rest, operator, op_len, level, [], [current | acc])
+    else
+      # Not the operator, just consume the character
+      case str do
+        <<char::utf8, rest::binary>> ->
+          do_split_by_operator(rest, operator, op_len, level, [current, <<char::utf8>>], acc)
+
+        # Handle invalid UTF-8 by consuming one byte
+        <<byte, rest::binary>> ->
+          do_split_by_operator(rest, operator, op_len, level, [current, <<byte>>], acc)
+      end
+    end
+  end
+
+  defp do_split_by_operator(<<char::utf8, rest::binary>>, operator, op_len, level, current, acc) do
+    # Inside parentheses (level > 0), just consume characters
+    do_split_by_operator(rest, operator, op_len, level, [current, <<char::utf8>>], acc)
+  end
+
+  # Handle invalid UTF-8 gracefully when inside parentheses
+  defp do_split_by_operator(<<byte, rest::binary>>, operator, op_len, level, current, acc) do
+    do_split_by_operator(rest, operator, op_len, level, [current, <<byte>>], acc)
+  end
+
+  @spec evaluate_or_expression([String.t()], [String.t()], [String.t()], map()) ::
+          {:ok, boolean()} | {:error, term()}
   defp evaluate_or_expression(parts, request, policy, function_map) do
     results =
       Enum.map(parts, fn part ->
@@ -1730,10 +1849,24 @@ defmodule CasbinEx2.Enforcer do
     {:ok, any_true}
   end
 
+  @spec evaluate_and_expression([String.t()], [String.t()], [String.t()], map()) ::
+          {:ok, boolean()} | {:error, term()}
   defp evaluate_and_expression(parts, request, policy, function_map) do
     results =
       Enum.map(parts, fn part ->
-        case evaluate_single_expression(part, request, policy, function_map) do
+        # Each part might be a parenthesized expression or single expression
+        part_trimmed = String.trim(part)
+
+        part_expr =
+          if String.starts_with?(part_trimmed, "(") and String.ends_with?(part_trimmed, ")") do
+            # Remove outer parentheses
+            String.slice(part_trimmed, 1..-2//1) |> String.trim()
+          else
+            part_trimmed
+          end
+
+        # Recursively parse the part (it might contain OR operators)
+        case parse_and_evaluate_expression(part_expr, request, policy, function_map) do
           {:ok, result} -> result
           {:error, _reason} -> false
         end
@@ -1744,6 +1877,8 @@ defmodule CasbinEx2.Enforcer do
     {:ok, all_true}
   end
 
+  @spec evaluate_single_expression(String.t(), [String.t()], [String.t()], map()) ::
+          {:ok, boolean()} | {:error, term()}
   defp evaluate_single_expression(expr, request, policy, function_map) do
     cond do
       # Handle equality comparisons (including those with function calls)
@@ -1984,7 +2119,10 @@ defmodule CasbinEx2.Enforcer do
           Enum.at(request, 2, "")
         end
 
-      # BIBA/BLP: [sub, sub_level, obj, obj_level, act]
+      # 5-parameter models: territory-based [sub, dom, obj, act, territory]
+      # or BIBA/BLP [sub, sub_level, obj, obj_level, act]
+      # Territory-based models have dom at index 1, BIBA/BLP does not
+      # For both models, obj is at index 2
       5 ->
         Enum.at(request, 2, "")
 
@@ -2015,9 +2153,21 @@ defmodule CasbinEx2.Enforcer do
           Enum.at(request, 3, "")
         end
 
-      # BIBA/BLP: [sub, sub_level, obj, obj_level, act]
+      # 5-parameter models: territory-based [sub, dom, obj, act, territory]
+      # or BIBA/BLP [sub, sub_level, obj, obj_level, act]
+      # Detect model type by checking second parameter:
+      # - Territory/Domain-based: second param is a string domain (e.g., "web", "admin")
+      # - BIBA/BLP: second param is a numeric level (e.g., 1, 2, 3)
       5 ->
-        Enum.at(request, 4, "")
+        second_param = Enum.at(request, 1, "")
+
+        if is_number(second_param) do
+          # BIBA/BLP model: [sub, sub_level, obj, obj_level, act]
+          Enum.at(request, 4, "")
+        else
+          # Territory-based model: [sub, dom, obj, act, territory]
+          Enum.at(request, 3, "")
+        end
 
       # LBAC: [sub, conf, integ, obj, conf, integ, act]
       7 ->
@@ -2040,28 +2190,80 @@ defmodule CasbinEx2.Enforcer do
   defp substitute_parameter("p.obj", _request, policy) do
     case length(policy) do
       # Single-field: [obj]
-      1 -> Enum.at(policy, 0, "")
+      1 ->
+        Enum.at(policy, 0, "")
+
       # Standard: [sub, obj, act]
-      3 -> Enum.at(policy, 1, "")
+      3 ->
+        Enum.at(policy, 1, "")
+
       # Domain-based: [sub, dom, obj, act]
-      4 -> Enum.at(policy, 2, "")
-      # Time-based: [sub, obj, act, start_time, end_time]
-      5 -> Enum.at(policy, 1, "")
+      4 ->
+        Enum.at(policy, 2, "")
+
+      # 5-parameter models: Detect model type
+      5 ->
+        second_param = Enum.at(policy, 1, "")
+        fourth_param = Enum.at(policy, 3, "")
+
+        cond do
+          # BIBA/BLP model: second param is numeric level
+          is_number(second_param) ->
+            # [sub, sub_level, obj, obj_level, act]
+            Enum.at(policy, 2, "")
+
+          # Time-based model: fourth param looks like a timestamp
+          timestamp?(fourth_param) ->
+            # [sub, obj, act, start_time, end_time]
+            Enum.at(policy, 1, "")
+
+          # Territory-based model: has domain at index 1
+          true ->
+            # [sub, dom, obj, act, territory]
+            Enum.at(policy, 2, "")
+        end
+
       # Default to standard
-      _ -> Enum.at(policy, 1, "")
+      _ ->
+        Enum.at(policy, 1, "")
     end
   end
 
   defp substitute_parameter("p.act", _request, policy) do
     case length(policy) do
       # Standard: [sub, obj, act]
-      3 -> Enum.at(policy, 2, "")
+      3 ->
+        Enum.at(policy, 2, "")
+
       # Domain-based: [sub, dom, obj, act]
-      4 -> Enum.at(policy, 3, "")
-      # Time-based: [sub, obj, act, start_time, end_time]
-      5 -> Enum.at(policy, 2, "")
+      4 ->
+        Enum.at(policy, 3, "")
+
+      # 5-parameter models: Detect model type
+      5 ->
+        second_param = Enum.at(policy, 1, "")
+        fourth_param = Enum.at(policy, 3, "")
+
+        cond do
+          # BIBA/BLP model: second param is numeric level
+          is_number(second_param) ->
+            # [sub, sub_level, obj, obj_level, act]
+            Enum.at(policy, 4, "")
+
+          # Time-based model: fourth param looks like a timestamp
+          timestamp?(fourth_param) ->
+            # [sub, obj, act, start_time, end_time]
+            Enum.at(policy, 2, "")
+
+          # Territory-based model: has domain at index 1
+          true ->
+            # [sub, dom, obj, act, territory]
+            Enum.at(policy, 3, "")
+        end
+
       # Default to standard
-      _ -> Enum.at(policy, 2, "")
+      _ ->
+        Enum.at(policy, 2, "")
     end
   end
 
@@ -2071,6 +2273,8 @@ defmodule CasbinEx2.Enforcer do
   defp substitute_parameter("p.start_time", _request, policy), do: Enum.at(policy, 3, "")
   # Time-based: [sub, obj, act, start_time, end_time]
   defp substitute_parameter("p.end_time", _request, policy), do: Enum.at(policy, 4, "")
+  # Territory-based: [sub, dom, obj, act, territory]
+  defp substitute_parameter("p.territory", _request, policy), do: Enum.at(policy, 4, "")
 
   # BIBA/BLP: [sub, sub_level, obj, obj_level, act]
   defp substitute_parameter("r.sub_level", request, _policy), do: Enum.at(request, 1, "")
@@ -2086,6 +2290,9 @@ defmodule CasbinEx2.Enforcer do
     do: Enum.at(request, 4, "")
 
   defp substitute_parameter("r.object_integrity", request, _policy), do: Enum.at(request, 5, "")
+
+  # Territory-based: [sub, dom, obj, act, territory]
+  defp substitute_parameter("r.territory", request, _policy), do: Enum.at(request, 4, "")
 
   # Handle generic request parameters like r.ip, r.role, etc.
   defp substitute_parameter("r." <> _field, request, _policy) do
